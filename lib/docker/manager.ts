@@ -9,6 +9,7 @@ export interface WorkspaceConfig {
     id: string;
     image?: string; // e.g., 'codercom/code-server:latest'
     withAndroidEmulator?: boolean;
+    onLog?: (msg: string) => void;
 }
 
 /**
@@ -16,7 +17,7 @@ export interface WorkspaceConfig {
  * Optionally spins up a sidecar Android emulator container.
  */
 export async function startWorkspaceContainer(config: WorkspaceConfig) {
-    const { id, image = 'codercom/code-server:latest', withAndroidEmulator = false } = config;
+    const { id, withAndroidEmulator = false, onLog = console.log } = config;
     const containerName = `codeverse-workspace-${id}`;
     const androidContainerName = `codeverse-android-${id}`;
 
@@ -45,78 +46,30 @@ export async function startWorkspaceContainer(config: WorkspaceConfig) {
         // Map the local host path to the workspace
         const dataPath = process.env.DATA_PATH || path.resolve(process.cwd(), 'data/projects', id);
 
-        // --- WORKSPACE CONFIG (codeverse.json) LOGIC ---
-        const configPath = path.join(dataPath, 'codeverse.json');
+        // --- WORKSPACE CONFIG LOGIC AND IMAGE BUILDING ---
+        const { buildWorkspaceImage } = await import('./builder');
+
+        // Let the builder handle parsing and creating the image
+        const { imageName, config: codeverseConfig } = await buildWorkspaceImage(id, dataPath, onLog);
+
         let workspaceSpecificEnv: string[] = [];
-        let aptPackages: string[] = [];
-        let npmPackages: string[] = [];
-
-        try {
-            const fs = await import('fs/promises');
-            // Ensure project directory exists
-            await fs.mkdir(dataPath, { recursive: true });
-
-            try {
-                const configContent = await fs.readFile(configPath, 'utf8');
-                const customConfig = JSON.parse(configContent);
-                if (customConfig.env) {
-                    workspaceSpecificEnv = Object.entries(customConfig.env).map(([k, v]) => `${k}=${v}`);
-                }
-                if (Array.isArray(customConfig.packages?.apt)) {
-                    aptPackages = customConfig.packages.apt;
-                }
-                if (Array.isArray(customConfig.packages?.npm)) {
-                    npmPackages = customConfig.packages.npm;
-                }
-                if (customConfig.ios?.appetizeUrl) {
-                    appetizeUrl = customConfig.ios.appetizeUrl;
-                }
-            } catch (err: unknown) {
-                const fsErr = err as Error & { code?: string };
-                if (fsErr.code === 'ENOENT') {
-                    // Create default config if it doesn't exist
-                    const defaultConfig = {
-                        "env": { "PORT": "3000" },
-                        "packages": {
-                            "apt": [],
-                            "npm": []
-                        },
-                        "ios": {
-                            "appetizeUrl": ""
-                        }
-                    };
-                    await fs.writeFile(configPath, JSON.stringify(defaultConfig, null, 2));
-                } else {
-                    console.error("Error reading codeverse.json:", err);
-                }
-            }
-        } catch (fsErr) {
-            console.error("FS Error setting up workspace dir:", fsErr);
+        if (codeverseConfig.env) {
+            workspaceSpecificEnv = Object.entries(codeverseConfig.env).map(([k, v]) => `${k}=${v}`);
         }
 
-        // Ensure image exists
-        try {
-            await docker.getImage(image).inspect();
-            console.log(`Image ${image} exists locally.`);
-        } catch {
-            console.log(`Pulling ${image}... This may take a minute or two.`);
-            await new Promise((resolve, reject) => {
-                docker.pull(image, (err: unknown, stream: NodeJS.ReadableStream) => {
-                    if (err) return reject(err);
-                    docker.modem.followProgress(stream, (err: unknown, res: unknown[]) => err ? reject(err) : resolve(res));
-                });
-            });
+        if (codeverseConfig.ios?.appetizeUrl) {
+            appetizeUrl = codeverseConfig.ios.appetizeUrl;
         }
 
         const container = await docker.createContainer({
-            Image: image,
+            Image: imageName,
             name: containerName,
             Env: [
                 'AUTH=none',
                 'PASSWORD=codeverse',
                 'SUDO_PASSWORD=codeverse',
                 'TZ=UTC',
-                ...workspaceSpecificEnv // Inject custom user environment variables
+                ...workspaceSpecificEnv
             ],
             Cmd: ['--auth', 'none'],
             HostConfig: {
@@ -136,33 +89,6 @@ export async function startWorkspaceContainer(config: WorkspaceConfig) {
         });
 
         await container.start();
-
-        // --- POST-BOOT PACKAGE INSTALLATION ---
-        if (aptPackages.length > 0 || npmPackages.length > 0) {
-            console.log(`Provisioning dynamic packages for ${id}...`);
-
-            if (aptPackages.length > 0) {
-                // To run sudo apt, we'd ideally pipe the coded password or run exec as root.
-                // Assuming root User for exec simplifies this.
-                const rootExec = await container.exec({
-                    Cmd: ['bash', '-c', `apt-get update && apt-get install -y ${aptPackages.join(' ')}`],
-                    User: 'root',
-                    AttachStdout: true,
-                    AttachStderr: true,
-                });
-                await rootExec.start({ Detach: false });
-            }
-
-            if (npmPackages.length > 0) {
-                const rootExec = await container.exec({
-                    Cmd: ['bash', '-c', `npm install -g ${npmPackages.join(' ')}`],
-                    User: 'root',
-                    AttachStdout: true,
-                    AttachStderr: true,
-                });
-                await rootExec.start({ Detach: false });
-            }
-        }
 
         const info = await container.inspect();
         mainContainerId = container.id;

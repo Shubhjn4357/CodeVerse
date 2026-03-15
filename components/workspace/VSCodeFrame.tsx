@@ -16,30 +16,30 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
 
     const [appetizeUrl, setAppetizeUrl] = useState<string | null>(null);
 
+    const [buildLogs, setBuildLogs] = useState<string[]>([]);
+
     useEffect(() => {
-        // 1. Ask the backend to spin up (or verify) the Docker container for this workspace
-        async function initServer() {
+        const events = new EventSource(`/api/workspace/stream?id=${workspaceId}&withAndroid=true`);
+
+        events.addEventListener("log", (e) => {
             try {
-                // To save laptop resources, you'd ideally have a toggle or setting for this. 
-                // We're hardcoding to true here to enable the sidecar request for this demo.
-                const res = await fetch("/api/workspace", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "start", id: workspaceId, withAndroidEmulator: true })
-                });
+                const msg = JSON.parse(e.data);
+                setBuildLogs((prev) => [...prev, msg]);
+            } catch {
+                setBuildLogs((prev) => [...prev, e.data]);
+            }
+        });
 
-                const data = await res.json();
-
+        events.addEventListener("ready", (e) => {
+            try {
+                const data = JSON.parse(e.data);
                 if (data.success && data.port) {
                     setPort(data.port);
-                    if (data.appetizeUrl) {
-                        setAppetizeUrl(data.appetizeUrl);
-                    }
+                    if (data.appetizeUrl) setAppetizeUrl(data.appetizeUrl);
                     if (data.androidPort) {
                         setAndroidPort(data.androidPort);
-                        setShowEmulator(true); // Auto-open if we successfully provisioned an Android container
+                        setShowEmulator(true);
                     }
-                    // Add a tiny delay to ensure code-server inside the container has actually bound to the port
                     setTimeout(() => setStatus("ready"), 1500);
                 } else {
                     setStatus("error");
@@ -47,17 +47,35 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
             } catch {
                 setStatus("error");
             }
-        }
+            events.close();
+        });
 
-        initServer();
+        events.addEventListener("error", () => {
+            setStatus("error");
+            events.close();
+        });
+
+        return () => events.close();
     }, [workspaceId]);
 
     if (status === "loading") {
         return (
-            <div className="flex flex-col items-center justify-center w-full h-full bg-(--bg) text-(--text-muted) space-y-4">
+            <div className="flex flex-col items-center pt-24 w-full h-full bg-(--bg) text-(--text-muted) space-y-4">
                 <Loader2 size={32} className="animate-spin text-(--accent)" />
                 <p className="animate-pulse">Provisioning containerized VS Code engine...</p>
                 <div className="text-xs opacity-60">Initializing code-server, binding LSPs, and mapping volumes.</div>
+
+                {/* Build Logs Terminal */}
+                <div className="w-full max-w-2xl bg-black rounded-lg p-4 font-mono text-xs overflow-y-auto h-64 mt-8 shadow-xl border border-gray-800 flex flex-col items-start text-left">
+                    {buildLogs.map((log, i) => (
+                        <div key={i} className="text-gray-300 w-full break-all">
+                            <span className="text-green-500 mr-2">❯</span>
+                            {log}
+                        </div>
+                    ))}
+                    <div className="animate-pulse text-gray-500 mt-2">_</div>
+                </div>
+
                 {/* Note about KVM loading which can take time */}
                 <div className="text-[10px] opacity-40 mt-4">Also booting Android Container (This takes significantly longer...)</div>
             </div>

@@ -1,0 +1,284 @@
+{
+  "version": "1.0.0",
+  "created_at": "2026-03-02T14:13:49+05:30",
+  "sessions": [
+    {
+      "id": "1190d59b",
+      "agent": "my_custom_agent",
+      "model": "my-brand-new-llm",
+      "input_tokens": 6000,
+      "output_tokens": 3000,
+      "total_tokens": 9000,
+      "cost_usd": 0.018,
+      "task_id": "test-5",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:11:32.644975+05:30"
+    },
+    {
+      "id": "6a957f79",
+      "agent": "terminal",
+      "model": "gpt-4o-mini",
+      "input_tokens": 5000,
+      "output_tokens": 2500,
+      "total_tokens": 7500,
+      "cost_usd": 0.00225,
+      "task_id": "test-4",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:11:32.632833+05:30"
+    },
+    {
+      "id": "12c2d13f",
+      "agent": "codex",
+      "model": "gemini-2.0-flash",
+      "input_tokens": 4000,
+      "output_tokens": 2000,
+      "total_tokens": 6000,
+      "cost_usd": 0.0012,
+      "task_id": "test-3",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:11:32.620793+05:30"
+    },
+    {
+      "id": "b0906ef3",
+      "agent": "claude",
+      "model": "gpt-4o",
+      "input_tokens": 3000,
+      "output_tokens": 1500,
+      "total_tokens": 4500,
+      "cost_usd": 0.0225,
+      "task_id": "test-2",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:11:32.607507+05:30"
+    },
+    {
+      "id": "75327ef9",
+      "agent": "gemini",
+      "model": "claude-3-7-sonnet",
+      "input_tokens": 2000,
+      "output_tokens": 1000,
+      "total_tokens": 3000,
+      "cost_usd": 0.021,
+      "task_id": "test-1",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:11:32.594838+05:30"
+    },
+    {
+      "id": "4f83faa1",
+      "agent": "antigravity",
+      "model": "gemini-2.5-pro",
+      "input_tokens": 1000,
+      "output_tokens": 500,
+      "total_tokens": 1500,
+      "cost_usd": 0.00625,
+      "task_id": "test-0",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:11:32.544406+05:30"
+    },
+    {
+      "id": "1dd1ce33",
+      "agent": "my_custom_agent",
+      "model": "my-brand-new-llm",
+      "input_tokens": 6000,
+      "output_tokens": 3000,
+      "total_tokens": 9000,
+      "cost_usd": 0.018,
+      "task_id": "test-5",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:05:06.377939+05:30"
+    },
+    {
+      "id": "3c6a08e6",
+      "agent": "terminal",
+      "model": "gpt-4o-mini",
+      "input_tokens": 5000,
+      "output_tokens": 2500,
+      "total_tokens": 7500,
+      "cost_usd": 0.00225,
+      "task_id": "test-4",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:05:06.344667+05:30"
+    },
+    {
+      "id": "cc0e088f",
+      "agent": "codex",
+      "model": "gemini-2.0-flash",
+      "input_tokens": 4000,
+      "output_tokens": 2000,
+      "total_tokens": 6000,
+      "cost_usd": 0.0012,
+      "task_id": "test-3",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:05:06.320661+05:30"
+    },
+    {
+      "id": "3c0daba2",
+      "agent": "claude",
+      "model": "gpt-4o",
+      "input_tokens": 3000,
+      "output_tokens": 1500,
+      "total_tokens": 4500,
+      "cost_usd": 0.0225,
+      "task_id": "test-2",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:05:06.286481+05:30"
+    },
+    {
+      "id": "6db6246e",
+      "agent": "gemini",
+      "model": "claude-3-7-sonnet",
+      "input_tokens": 2000,
+      "output_tokens": 1000,
+      "total_tokens": 3000,
+      "cost_usd": 0.021,
+      "task_id": "test-1",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:05:06.265481+05:30"
+    },
+    {
+      "id": "d7fa7e3a",
+      "agent": "antigravity",
+      "model": "gemini-2.5-pro",
+      "input_tokens": 1000,
+      "output_tokens": 500,
+      "total_tokens": 1500,
+      "cost_usd": 0.00625,
+      "task_id": "test-0",
+      "note": "Self-test",
+      "logged_at": "2026-03-02T15:05:06.167770+05:30"
+    },
+    {
+      "id": "a3726392",
+      "agent": "my_custom_agent",
+      "model": "codex-davinci",
+      "input_tokens": 6000,
+      "output_tokens": 3000,
+      "total_tokens": 9000,
+      "cost_usd": 0.018,
+      "task_id": "test-task-5",
+      "note": "Self-test entry",
+      "logged_at": "2026-03-02T14:38:20.246573+05:30"
+    },
+    {
+      "id": "2109bf1f",
+      "agent": "terminal",
+      "model": "gpt-4o-mini",
+      "input_tokens": 5000,
+      "output_tokens": 2500,
+      "total_tokens": 7500,
+      "cost_usd": 0.00225,
+      "task_id": "test-task-4",
+      "note": "Self-test entry",
+      "logged_at": "2026-03-02T14:38:20.237117+05:30"
+    },
+    {
+      "id": "1861b746",
+      "agent": "codex",
+      "model": "gemini-2.0-flash",
+      "input_tokens": 4000,
+      "output_tokens": 2000,
+      "total_tokens": 6000,
+      "cost_usd": 0.0012,
+      "task_id": "test-task-3",
+      "note": "Self-test entry",
+      "logged_at": "2026-03-02T14:38:20.222504+05:30"
+    },
+    {
+      "id": "310f975b",
+      "agent": "claude",
+      "model": "gpt-4o",
+      "input_tokens": 3000,
+      "output_tokens": 1500,
+      "total_tokens": 4500,
+      "cost_usd": 0.0225,
+      "task_id": "test-task-2",
+      "note": "Self-test entry",
+      "logged_at": "2026-03-02T14:38:20.211912+05:30"
+    },
+    {
+      "id": "f5d61c9d",
+      "agent": "gemini",
+      "model": "claude-3-7-sonnet",
+      "input_tokens": 2000,
+      "output_tokens": 1000,
+      "total_tokens": 3000,
+      "cost_usd": 0.021,
+      "task_id": "test-task-1",
+      "note": "Self-test entry",
+      "logged_at": "2026-03-02T14:38:20.201218+05:30"
+    },
+    {
+      "id": "a7b034ba",
+      "agent": "antigravity",
+      "model": "gemini-2.5-pro",
+      "input_tokens": 1000,
+      "output_tokens": 500,
+      "total_tokens": 1500,
+      "cost_usd": 0.00625,
+      "task_id": "test-task-0",
+      "note": "Self-test entry",
+      "logged_at": "2026-03-02T14:38:20.188250+05:30"
+    }
+  ],
+  "totals": {
+    "antigravity": {
+      "input_tokens": 3000,
+      "output_tokens": 1500,
+      "total_tokens": 4500,
+      "cost_usd": 0.01875,
+      "session_count": 3,
+      "models_used": [
+        "gemini-2.5-pro"
+      ]
+    },
+    "gemini": {
+      "input_tokens": 6000,
+      "output_tokens": 3000,
+      "total_tokens": 9000,
+      "cost_usd": 0.063,
+      "session_count": 3,
+      "models_used": [
+        "claude-3-7-sonnet"
+      ]
+    },
+    "claude": {
+      "input_tokens": 9000,
+      "output_tokens": 4500,
+      "total_tokens": 13500,
+      "cost_usd": 0.0675,
+      "session_count": 3,
+      "models_used": [
+        "gpt-4o"
+      ]
+    },
+    "codex": {
+      "input_tokens": 12000,
+      "output_tokens": 6000,
+      "total_tokens": 18000,
+      "cost_usd": 0.0036,
+      "session_count": 3,
+      "models_used": [
+        "gemini-2.0-flash"
+      ]
+    },
+    "terminal": {
+      "input_tokens": 15000,
+      "output_tokens": 7500,
+      "total_tokens": 22500,
+      "cost_usd": 0.00675,
+      "session_count": 3,
+      "models_used": [
+        "gpt-4o-mini"
+      ]
+    },
+    "my_custom_agent": {
+      "input_tokens": 18000,
+      "output_tokens": 9000,
+      "total_tokens": 27000,
+      "cost_usd": 0.054,
+      "session_count": 3,
+      "models_used": [
+        "my-brand-new-llm"
+      ]
+    }
+  }
+}

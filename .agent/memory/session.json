@@ -1,0 +1,13 @@
+{
+  "version": "1.0.0",
+  "session_id": "2e489ee7",
+  "started_at": "2026-03-15T20:46:31.162981+05:30",
+  "workspace": "D:\\Code\\codeverse",
+  "active_task_id": null,
+  "active_agent": null,
+  "status": "idle",
+  "last_checkpoint_at": null,
+  "context_tokens_used": 0,
+  "context_budget": 100000,
+  "notes": []
+}

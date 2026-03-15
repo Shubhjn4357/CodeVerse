@@ -1,0 +1,56 @@
+[
+  {
+    "caption": "Mem: Status",
+    "command": "exec",
+    "args": {
+      "cmd": "python .Agent/scripts/mem.py status",
+      "env": { "MEM_AGENT": "sublime" },
+      "shell": true
+    }
+  },
+  {
+    "caption": "Mem: Load Context",
+    "command": "exec",
+    "args": {
+      "cmd": "python .Agent/scripts/mem.py ctx",
+      "env": { "MEM_AGENT": "sublime" },
+      "shell": true
+    }
+  },
+  {
+    "caption": "Mem: New Task",
+    "command": "exec",
+    "args": {
+      "cmd": "python .Agent/scripts/mem.py write",
+      "env": { "MEM_AGENT": "sublime" },
+      "shell": true
+    }
+  },
+  {
+    "caption": "Mem: Checkpoint",
+    "command": "exec",
+    "args": {
+      "cmd": "python .Agent/scripts/mem.py cp",
+      "env": { "MEM_AGENT": "sublime" },
+      "shell": true
+    }
+  },
+  {
+    "caption": "Mem: Usage Report",
+    "command": "exec",
+    "args": {
+      "cmd": "python .Agent/scripts/mem.py report",
+      "env": { "MEM_AGENT": "sublime" },
+      "shell": true
+    }
+  },
+  {
+    "caption": "Mem: Open Dashboard",
+    "command": "exec",
+    "args": {
+      "cmd": "python .Agent/scripts/mem.py open",
+      "env": { "MEM_AGENT": "sublime" },
+      "shell": true
+    }
+  }
+]

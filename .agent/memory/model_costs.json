@@ -1,0 +1,31 @@
+{
+  "_comment": "Model pricing (USD per 1M tokens). Edit freely or run: mem log --add-model <name> --cost-input X --cost-output Y",
+  "default": {
+    "input": 1.0,
+    "output": 4.0
+  },
+  "gemini-2.5-pro": {
+    "input": 1.25,
+    "output": 10.0
+  },
+  "claude-3-7-sonnet": {
+    "input": 3.0,
+    "output": 15.0
+  },
+  "gpt-4o": {
+    "input": 2.5,
+    "output": 10.0
+  },
+  "gemini-2.0-flash": {
+    "input": 0.1,
+    "output": 0.4
+  },
+  "gpt-4o-mini": {
+    "input": 0.15,
+    "output": 0.6
+  },
+  "my-brand-new-llm": {
+    "input": 1.0,
+    "output": 4.0
+  }
+}

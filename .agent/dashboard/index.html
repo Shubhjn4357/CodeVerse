@@ -1,0 +1,1005 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🧠 Agent Memory Dashboard</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {
+      --bg: #0a0e1a;
+      --surface: #111827;
+      --surface2: #1a2235;
+      --border: #1e2d45;
+      --accent: #00d4ff;
+      --accent2: #00ff9d;
+      --accent3: #ff6b35;
+      --accent4: #a78bfa;
+      --text: #e2e8f0;
+      --text-muted: #64748b;
+      --text-dim: #94a3b8;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius: 12px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --glow: 0 0 20px rgba(0,212,255,0.15);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Background grid */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(0,212,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,212,255,0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 0 24px; position: relative; z-index: 1; }
+
+    /* Header */
+    header {
+      padding: 24px 0 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, #00d4ff22, #00ff9d22);
+      border: 1px solid var(--accent);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      box-shadow: var(--glow);
+    }
+
+    .logo h1 {
+      font-size: 20px;
+      font-weight: 700;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo p {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .badge-active { background: rgba(16,185,129,0.15); color: var(--success); border: 1px solid rgba(16,185,129,0.3); }
+    .badge-idle   { background: rgba(100,116,139,0.15); color: var(--text-muted); border: 1px solid rgba(100,116,139,0.3); }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: 'Inter', sans-serif;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-primary { background: linear-gradient(135deg, #00d4ff22, #00ff9d11); border-color: var(--accent); color: var(--accent); }
+
+    /* Last updated */
+    #last-updated { font-size: 12px; color: var(--text-muted); font-family: 'JetBrains Mono', monospace; }
+
+    /* Navigation tabs */
+    nav {
+      display: flex;
+      gap: 4px;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+    }
+
+    .tab {
+      padding: 8px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      color: var(--text-muted);
+      transition: all 0.2s;
+      white-space: nowrap;
+      background: transparent;
+      border: none;
+      font-family: 'Inter', sans-serif;
+    }
+    .tab:hover { color: var(--text); background: var(--surface2); }
+    .tab.active { background: linear-gradient(135deg, rgba(0,212,255,0.15), rgba(0,255,157,0.1)); color: var(--accent); border: 1px solid var(--border); }
+
+    /* Main grid */
+    main { padding: 24px 0 48px; }
+
+    .panel { display: none; }
+    .panel.active { display: block; }
+
+    /* Cards */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .card:hover { border-color: #2a3f5f; box-shadow: var(--shadow); }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 12px;
+    }
+
+    /* Grid layouts */
+    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 24px; }
+
+    @media (max-width: 768px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    /* Stat cards */
+    .stat-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 20px;
+    }
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .stat-label { font-size: 13px; color: var(--text-muted); }
+
+    /* Task list */
+    .task-list { display: flex; flex-direction: column; gap: 8px; }
+    .task-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 14px 16px;
+      background: var(--surface2);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      transition: border-color 0.2s;
+      cursor: pointer;
+    }
+    .task-item:hover { border-color: var(--accent); }
+    .task-item.active-task { border-color: var(--success); background: rgba(16,185,129,0.05); }
+
+    .task-status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+    .dot-in_progress { background: var(--accent); box-shadow: 0 0 6px var(--accent); animation: pulse 2s infinite; }
+    .dot-completed   { background: var(--success); }
+    .dot-blocked     { background: var(--danger); }
+    .dot-cancelled   { background: var(--text-muted); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .task-info { flex: 1; min-width: 0; }
+    .task-title { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .task-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; font-family: 'JetBrains Mono', monospace; }
+
+    .task-badge {
+      padding: 2px 8px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+    .tb-in_progress { background: rgba(0,212,255,0.15); color: var(--accent); }
+    .tb-completed   { background: rgba(16,185,129,0.15); color: var(--success); }
+    .tb-blocked     { background: rgba(239,68,68,0.15); color: var(--danger); }
+    .tb-cancelled   { background: rgba(100,116,139,0.15); color: var(--text-muted); }
+
+    /* Usage bars */
+    .agent-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .agent-row:last-child { border-bottom: none; }
+    .agent-name {
+      width: 140px;
+      font-size: 14px;
+      font-weight: 500;
+      flex-shrink: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .bar-wrap { flex: 1; background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+    .agent-tokens { width: 90px; text-align: right; font-size: 12px; font-family: 'JetBrains Mono', monospace; color: var(--text-dim); }
+    .agent-cost { width: 70px; text-align: right; font-size: 12px; font-family: 'JetBrains Mono', monospace; color: var(--accent2); }
+
+    /* Mini chart (pure CSS bars) */
+    .mini-chart { display: flex; align-items: flex-end; gap: 4px; height: 60px; padding: 0 0 4px; }
+    .mini-bar { flex: 1; border-radius: 3px 3px 0 0; min-width: 8px; transition: height 0.8s ease; position: relative; cursor: default; }
+    .mini-bar:hover::after {
+      content: attr(data-label);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 3px 6px;
+      border-radius: 4px;
+      font-size: 10px;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    /* Checkpoint timeline */
+    .timeline { display: flex; flex-direction: column; gap: 0; }
+    .timeline-item {
+      display: flex;
+      gap: 16px;
+      padding-bottom: 20px;
+      position: relative;
+    }
+    .timeline-item::before {
+      content: '';
+      position: absolute;
+      left: 15px;
+      top: 32px;
+      bottom: 0;
+      width: 1px;
+      background: var(--border);
+    }
+    .timeline-item:last-child::before { display: none; }
+    .timeline-dot {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--surface2);
+      border: 2px solid var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .timeline-content { flex: 1; padding-top: 4px; }
+    .timeline-title { font-size: 14px; font-weight: 500; }
+    .timeline-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+    .timeline-summary { font-size: 13px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+
+    /* Tips */
+    .tip-item {
+      display: flex;
+      gap: 12px;
+      padding: 14px;
+      background: var(--surface2);
+      border-radius: 10px;
+      border-left: 3px solid var(--warning);
+      margin-bottom: 8px;
+    }
+    .tip-icon { font-size: 18px; flex-shrink: 0; }
+    .tip-text { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+
+    /* Search */
+    .search-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    .search-input {
+      flex: 1;
+      padding: 10px 16px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 14px;
+      font-family: 'Inter', sans-serif;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--text-muted); }
+
+    /* Section separators */
+    .section-header {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-header span { color: var(--text-muted); font-size: 13px; font-weight: 400; }
+
+    /* Empty states */
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+    .empty-icon { font-size: 40px; margin-bottom: 12px; }
+    .empty p { font-size: 14px; }
+    .empty code {
+      display: block;
+      margin-top: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 8px 12px;
+      background: var(--surface2);
+      border-radius: 6px;
+      color: var(--accent);
+      text-align: left;
+      max-width: 400px;
+      margin-inline: auto;
+    }
+
+    /* Colors for agent bars */
+    .color-0 { background: linear-gradient(90deg, #00d4ff, #0099cc); }
+    .color-1 { background: linear-gradient(90deg, #00ff9d, #00b36b); }
+    .color-2 { background: linear-gradient(90deg, #ff6b35, #cc4400); }
+    .color-3 { background: linear-gradient(90deg, #a78bfa, #7c3aed); }
+    .color-4 { background: linear-gradient(90deg, #f59e0b, #b45309); }
+    .color-5 { background: linear-gradient(90deg, #ec4899, #9d174d); }
+    .color-6 { background: linear-gradient(90deg, #06b6d4, #0e7490); }
+    .color-7 { background: linear-gradient(90deg, #84cc16, #4d7c0f); }
+
+    /* Knowledge items */
+    .knowledge-item {
+      padding: 14px 16px;
+      background: var(--surface2);
+      border-radius: 10px;
+      border-left: 3px solid var(--accent4);
+      margin-bottom: 8px;
+    }
+    .knowledge-title { font-size: 14px; font-weight: 600; }
+    .knowledge-content { font-size: 13px; color: var(--text-dim); margin-top: 6px; line-height: 1.5; }
+    .knowledge-tags { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+    .knowledge-tag {
+      padding: 2px 8px;
+      background: rgba(167,139,250,0.1);
+      color: var(--accent4);
+      border-radius: 20px;
+      font-size: 11px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Loading spinner */
+    .spinner {
+      display: inline-block;
+      width: 16px; height: 16px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Active task hero */
+    .active-task-hero {
+      background: linear-gradient(135deg, rgba(0,212,255,0.08), rgba(0,255,157,0.04));
+      border: 1px solid rgba(0,212,255,0.3);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+    .active-task-hero::before {
+      content: '';
+      position: absolute;
+      top: 0; right: 0;
+      width: 200px; height: 200px;
+      background: radial-gradient(circle, rgba(0,212,255,0.1), transparent 70%);
+      pointer-events: none;
+    }
+    .hero-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent); font-weight: 600; margin-bottom: 8px; }
+    .hero-title { font-size: 22px; font-weight: 700; }
+    .hero-meta { font-size: 13px; color: var(--text-dim); margin-top: 8px; display: flex; gap: 20px; flex-wrap: wrap; }
+    .hero-meta strong { color: var(--text); }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🧠</div>
+      <div>
+        <h1>Agent Memory Dashboard</h1>
+        <p>Unified cross-agent memory · Local-first · No server</p>
+      </div>
+    </div>
+    <div class="header-actions">
+      <span id="last-updated">Loading...</span>
+      <span class="badge badge-idle" id="session-badge">idle</span>
+      <button class="btn btn-primary" onclick="loadData()">↻ Refresh</button>
+    </div>
+  </header>
+
+  <!-- Tabs -->
+  <nav id="tabs">
+    <button class="tab active" onclick="showPanel('overview')" id="tab-overview">📊 Overview</button>
+    <button class="tab" onclick="showPanel('tasks')" id="tab-tasks">📋 Tasks</button>
+    <button class="tab" onclick="showPanel('checkpoints')" id="tab-checkpoints">💾 Checkpoints</button>
+    <button class="tab" onclick="showPanel('usage')" id="tab-usage">⚡ Token Usage</button>
+    <button class="tab" onclick="showPanel('knowledge')" id="tab-knowledge">🧩 Knowledge</button>
+    <button class="tab" onclick="showPanel('search')" id="tab-search">🔍 Search</button>
+    <button class="tab" onclick="showPanel('tips')" id="tab-tips">💡 Tips</button>
+  </nav>
+
+  <main>
+
+    <!-- OVERVIEW PANEL -->
+    <div class="panel active" id="panel-overview">
+
+      <!-- Stat cards -->
+      <div class="grid-4">
+        <div class="card stat-card">
+          <div class="card-title">Total Tasks</div>
+          <div class="stat-value" id="stat-tasks">—</div>
+          <div class="stat-label">stored in memory</div>
+        </div>
+        <div class="card stat-card">
+          <div class="card-title">Checkpoints</div>
+          <div class="stat-value" id="stat-checkpoints">—</div>
+          <div class="stat-label">context snapshots</div>
+        </div>
+        <div class="card stat-card">
+          <div class="card-title">Total Tokens</div>
+          <div class="stat-value" id="stat-tokens">—</div>
+          <div class="stat-label">across all agents</div>
+        </div>
+        <div class="card stat-card">
+          <div class="card-title">Est. Cost</div>
+          <div class="stat-value" id="stat-cost">—</div>
+          <div class="stat-label">USD cumulative</div>
+        </div>
+      </div>
+
+      <!-- Active Task Hero -->
+      <div class="active-task-hero" id="active-task-hero" style="display:none">
+        <div class="hero-label">⚡ Active Task</div>
+        <div class="hero-title" id="hero-title">—</div>
+        <div class="hero-meta" id="hero-meta"></div>
+      </div>
+
+      <div class="grid-2">
+        <!-- Recent tasks -->
+        <div class="card">
+          <div class="section-header">Recent Tasks <span id="task-count-label"></span></div>
+          <div class="task-list" id="overview-tasks">
+            <div class="empty"><div class="spinner"></div> Loading...</div>
+          </div>
+        </div>
+
+        <!-- Agent usage summary -->
+        <div class="card">
+          <div class="section-header">Agent Usage Summary</div>
+          <div id="overview-usage">
+            <div class="empty"><div class="spinner"></div> Loading...</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TASKS PANEL -->
+    <div class="panel" id="panel-tasks">
+      <div class="card">
+        <div class="section-header">All Tasks <span id="all-task-count"></span></div>
+        <div class="task-list" id="all-tasks">
+          <div class="empty"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHECKPOINTS PANEL -->
+    <div class="panel" id="panel-checkpoints">
+      <div class="card">
+        <div class="section-header">Checkpoint Timeline</div>
+        <div class="timeline" id="checkpoint-timeline">
+          <div class="empty"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- USAGE PANEL -->
+    <div class="panel" id="panel-usage">
+
+      <div class="grid-3" id="usage-cards"></div>
+
+      <div class="card" style="margin-bottom:24px">
+        <div class="section-header">Token Usage per Agent</div>
+        <div id="usage-bars"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-header">Recent Sessions <span id="sessions-count"></span></div>
+        <div id="sessions-list"></div>
+      </div>
+    </div>
+
+    <!-- KNOWLEDGE PANEL -->
+    <div class="panel" id="panel-knowledge">
+      <div class="card">
+        <div class="section-header">Knowledge Base</div>
+        <div id="knowledge-list"></div>
+      </div>
+    </div>
+
+    <!-- SEARCH PANEL -->
+    <div class="panel" id="panel-search">
+      <div class="search-bar">
+        <input class="search-input" id="search-input" placeholder="Search tasks, checkpoints, knowledge..." oninput="doSearch(this.value)" />
+      </div>
+      <div class="card">
+        <div id="search-results">
+          <div class="empty">
+            <div class="empty-icon">🔍</div>
+            <p>Type to search across all memory</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TIPS PANEL -->
+    <div class="panel" id="panel-tips">
+      <div class="card">
+        <div class="section-header">⚡ Token Optimization Tips</div>
+        <div id="tips-list"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <div class="section-header">📋 Quick Commands</div>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="knowledge-item">
+            <div class="knowledge-title">Load context at session start</div>
+            <pre class="mono" style="font-size:12px;color:var(--accent);margin-top:8px;white-space:pre-wrap">python .Agent/scripts/memory_engine.py --context --agent &lt;name&gt; --max-tokens 4000</pre>
+          </div>
+          <div class="knowledge-item">
+            <div class="knowledge-title">Save a checkpoint</div>
+            <pre class="mono" style="font-size:12px;color:var(--accent);margin-top:8px;white-space:pre-wrap">python .Agent/scripts/memory_engine.py --checkpoint --task-id &lt;id&gt; --agent &lt;name&gt; --summary "..."</pre>
+          </div>
+          <div class="knowledge-item">
+            <div class="knowledge-title">Log token usage</div>
+            <pre class="mono" style="font-size:12px;color:var(--accent);margin-top:8px;white-space:pre-wrap">python .Agent/scripts/usage_tracker.py --log --agent &lt;name&gt; --model gemini-2.5-pro --input 1200 --output 800</pre>
+          </div>
+          <div class="knowledge-item">
+            <div class="knowledge-title">Auto-compress + checkpoint when context is large</div>
+            <pre class="mono" style="font-size:12px;color:var(--accent);margin-top:8px;white-space:pre-wrap">python .Agent/scripts/context_optimizer.py --auto-checkpoint --task-id &lt;id&gt; --agent &lt;name&gt; --input ctx.txt</pre>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// Data loading — reads JSON files relative to dashboard/
+// ─────────────────────────────────────────────
+
+let STORE = { tasks: [], checkpoints: [], knowledge: [] };
+let USAGE = { totals: {}, sessions: [] };
+let SESSION = {};
+
+const COLORS = ['color-0','color-1','color-2','color-3','color-4','color-5','color-6','color-7'];
+
+async function fetchJSON(path) {
+  try {
+    const r = await fetch(path);
+    if (!r.ok) return null;
+    return r.json();
+  } catch { return null; }
+}
+
+async function loadData() {
+  // Try relative paths from dashboard/ directory
+  const [store, usage, session] = await Promise.all([
+    fetchJSON('../memory/memory-store.json'),
+    fetchJSON('../memory/usage-tracker.json'),
+    fetchJSON('../memory/session.json'),
+  ]);
+
+  if (store)   STORE   = store;
+  if (usage)   USAGE   = usage;
+  if (session) SESSION = session;
+
+  renderAll();
+  document.getElementById('last-updated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+}
+
+function renderAll() {
+  renderSession();
+  renderOverview();
+  renderTasks();
+  renderCheckpoints();
+  renderUsage();
+  renderKnowledge();
+  renderTips();
+}
+
+// ─────────────────────────────────────────────
+// Session badge
+// ─────────────────────────────────────────────
+function renderSession() {
+  const badge = document.getElementById('session-badge');
+  const status = SESSION.status || 'idle';
+  badge.textContent = status;
+  badge.className = 'badge ' + (status === 'in_progress' ? 'badge-active' : 'badge-idle');
+}
+
+// ─────────────────────────────────────────────
+// Overview
+// ─────────────────────────────────────────────
+function renderOverview() {
+  const tasks = STORE.tasks || [];
+  const cps   = STORE.checkpoints || [];
+  const totals = USAGE.totals || {};
+
+  let grandTokens = 0, grandCost = 0;
+  Object.values(totals).forEach(t => {
+    grandTokens += t.total_tokens || 0;
+    grandCost   += t.cost_usd || 0;
+  });
+
+  document.getElementById('stat-tasks').textContent = tasks.length;
+  document.getElementById('stat-checkpoints').textContent = cps.length;
+  document.getElementById('stat-tokens').textContent = fmtTokens(grandTokens);
+  document.getElementById('stat-cost').textContent = '$' + grandCost.toFixed(4);
+
+  // Active task hero
+  const activeId = SESSION.active_task_id;
+  const heroEl = document.getElementById('active-task-hero');
+  if (activeId) {
+    const at = tasks.find(t => t.id === activeId);
+    if (at) {
+      heroEl.style.display = '';
+      document.getElementById('hero-title').textContent = at.title;
+      document.getElementById('hero-meta').innerHTML =
+        `<div>Agent: <strong>${at.agent}</strong></div>` +
+        `<div>Status: <strong>${at.status}</strong></div>` +
+        `<div>Updated: <strong>${at.updated_at?.slice(0,16).replace('T',' ')}</strong></div>`;
+    }
+  } else { heroEl.style.display = 'none'; }
+
+  // Tasks list
+  const el = document.getElementById('overview-tasks');
+  document.getElementById('task-count-label').textContent = `(${tasks.length})`;
+  el.innerHTML = tasks.slice(0, 6).map(t => taskItemHTML(t, t.id === activeId)).join('') ||
+    emptyHTML('No tasks yet', 'python .Agent/scripts/memory_engine.py --write --task "My Task" --agent "me"');
+
+  // Usage
+  renderUsageBars('overview-usage', true);
+}
+
+// ─────────────────────────────────────────────
+// Tasks
+// ─────────────────────────────────────────────
+function renderTasks() {
+  const tasks = STORE.tasks || [];
+  document.getElementById('all-task-count').textContent = `(${tasks.length})`;
+  document.getElementById('all-tasks').innerHTML =
+    tasks.map(t => taskItemHTML(t, t.id === SESSION.active_task_id)).join('') ||
+    emptyHTML('No tasks recorded yet', 'python .Agent/scripts/memory_engine.py --write --task "Build Feature X" --agent "antigravity"');
+}
+
+function taskItemHTML(t, isActive = false) {
+  return `<div class="task-item ${isActive ? 'active-task' : ''}">
+    <div class="task-status-dot dot-${t.status || 'in_progress'}"></div>
+    <div class="task-info">
+      <div class="task-title">${esc(t.title || 'Untitled')}</div>
+      <div class="task-meta">${t.agent} · ${t.id} · ${(t.updated_at||'').slice(0,16).replace('T',' ')}</div>
+      ${t.description ? `<div class="task-meta" style="margin-top:4px">${esc(t.description.slice(0,80))}${t.description.length > 80 ? '...' : ''}</div>` : ''}
+    </div>
+    <div class="task-badge tb-${t.status || 'in_progress'}">${t.status || 'in_progress'}</div>
+  </div>`;
+}
+
+// ─────────────────────────────────────────────
+// Checkpoints
+// ─────────────────────────────────────────────
+function renderCheckpoints() {
+  const cps = STORE.checkpoints || [];
+  const tasks = STORE.tasks || [];
+  const el = document.getElementById('checkpoint-timeline');
+  if (!cps.length) {
+    el.innerHTML = emptyHTML('No checkpoints yet',
+      'python .Agent/scripts/memory_engine.py --checkpoint --task-id <id> --agent <name> --summary "..."');
+    return;
+  }
+  el.innerHTML = cps.map(cp => {
+    const task = tasks.find(t => t.id === cp.task_id);
+    return `<div class="timeline-item">
+      <div class="timeline-dot">💾</div>
+      <div class="timeline-content">
+        <div class="timeline-title">${esc(cp.summary || 'Checkpoint')}</div>
+        <div class="timeline-meta">
+          ${cp.agent} · ${cp.id} · ${(cp.created_at||'').slice(0,16).replace('T',' ')}
+          ${task ? ` · Task: ${esc(task.title||cp.task_id)}` : ''}
+          ${cp.token_estimate ? ` · ~${cp.token_estimate.toLocaleString()} tokens` : ''}
+        </div>
+        ${cp.compressed_context ? `<div class="timeline-summary">${esc(cp.compressed_context.slice(0,120))}...</div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────
+// Usage
+// ─────────────────────────────────────────────
+function renderUsage() {
+  const totals = USAGE.totals || {};
+  const sessions = USAGE.sessions || [];
+  const entries = Object.entries(totals);
+
+  // Stat cards for each agent
+  const cardsEl = document.getElementById('usage-cards');
+  cardsEl.innerHTML = entries.length ? entries.map(([name, stats], i) => `
+    <div class="card stat-card">
+      <div class="card-title">${esc(name)}</div>
+      <div class="stat-value" style="font-size:24px">${fmtTokens(stats.total_tokens||0)}</div>
+      <div class="stat-label">$${(stats.cost_usd||0).toFixed(4)} · ${stats.session_count||0} session(s)</div>
+    </div>`).join('') : '';
+
+  // Bars
+  renderUsageBars('usage-bars', false);
+
+  // Sessions table
+  const sessEl = document.getElementById('sessions-list');
+  document.getElementById('sessions-count').textContent = `(${sessions.length})`;
+  sessEl.innerHTML = sessions.slice(0,20).map(s => `
+    <div class="agent-row">
+      <div class="agent-name">${esc(s.agent||'?')}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;color:var(--text-dim);font-family:'JetBrains Mono',monospace">${esc(s.model||'')} · ${(s.logged_at||'').slice(0,16).replace('T',' ')}</div>
+        ${s.note ? `<div style="font-size:11px;color:var(--text-muted);margin-top:2px">${esc(s.note)}</div>` : ''}
+      </div>
+      <div class="agent-tokens">${(s.total_tokens||0).toLocaleString()}</div>
+      <div class="agent-cost">$${(s.cost_usd||0).toFixed(4)}</div>
+    </div>`).join('') ||
+    '<div class="empty"><p>No sessions logged</p></div>';
+}
+
+function renderUsageBars(containerId, compact = false) {
+  const totals = USAGE.totals || {};
+  const el = document.getElementById(containerId);
+  const entries = Object.entries(totals);
+  if (!entries.length) {
+    el.innerHTML = emptyHTML('No usage data', 'python .Agent/scripts/usage_tracker.py --log --agent antigravity --model gemini-2.5-pro --input 1000 --output 500');
+    return;
+  }
+  const maxTokens = Math.max(...entries.map(([, s]) => s.total_tokens || 0), 1);
+  el.innerHTML = entries.map(([name, stats], i) => {
+    const pct = ((stats.total_tokens || 0) / maxTokens * 100).toFixed(1);
+    return `<div class="agent-row">
+      <div class="agent-name">${esc(name)}</div>
+      <div class="bar-wrap"><div class="bar-fill ${COLORS[i % COLORS.length]}" style="width:${pct}%"></div></div>
+      <div class="agent-tokens">${fmtTokens(stats.total_tokens||0)}</div>
+      ${compact ? '' : `<div class="agent-cost">$${(stats.cost_usd||0).toFixed(4)}</div>`}
+    </div>`;
+  }).join('');
+}
+
+// ─────────────────────────────────────────────
+// Knowledge
+// ─────────────────────────────────────────────
+function renderKnowledge() {
+  const kn = STORE.knowledge || [];
+  const el = document.getElementById('knowledge-list');
+  el.innerHTML = kn.map(k => `
+    <div class="knowledge-item">
+      <div class="knowledge-title">${esc(k.title||'Untitled')}</div>
+      <div class="knowledge-content">${esc(k.content||'')}</div>
+      ${k.tags?.length ? `<div class="knowledge-tags">${k.tags.map(t => `<span class="knowledge-tag">${esc(t)}</span>`).join('')}</div>` : ''}
+      <div class="timeline-meta" style="margin-top:8px">${k.id} · ${(k.created_at||'').slice(0,16).replace('T',' ')}</div>
+    </div>`).join('') ||
+    emptyHTML('No knowledge entries', 'python .Agent/scripts/memory_engine.py --know --title "Pattern" --content "..."');
+}
+
+// ─────────────────────────────────────────────
+// Search
+// ─────────────────────────────────────────────
+let searchTimer;
+function doSearch(query) {
+  clearTimeout(searchTimer);
+  if (!query.trim()) {
+    document.getElementById('search-results').innerHTML = `<div class="empty"><div class="empty-icon">🔍</div><p>Type to search</p></div>`;
+    return;
+  }
+  searchTimer = setTimeout(() => {
+    const terms = query.toLowerCase().split(/\s+/);
+    const score = text => terms.reduce((s, t) => s + (text.toLowerCase().includes(t) ? 1 : 0), 0);
+
+    const results = [
+      ...(STORE.tasks||[]).map(t => ({ type:'task', score: score(`${t.title} ${t.description} ${(t.tags||[]).join(' ')}`), item: t })),
+      ...(STORE.checkpoints||[]).map(c => ({ type:'checkpoint', score: score(`${c.summary} ${c.compressed_context||''}`), item: c })),
+      ...(STORE.knowledge||[]).map(k => ({ type:'knowledge', score: score(`${k.title} ${k.content}`), item: k })),
+    ].filter(r => r.score > 0).sort((a,b) => b.score - a.score);
+
+    const el = document.getElementById('search-results');
+    if (!results.length) {
+      el.innerHTML = `<div class="empty"><p>No results for "${esc(query)}"</p></div>`; return;
+    }
+    el.innerHTML = results.map(r => {
+      const it = r.item;
+      if (r.type === 'task') return taskItemHTML(it);
+      if (r.type === 'checkpoint') return `
+        <div class="task-item">
+          <div class="task-status-dot" style="background:var(--accent2);box-shadow:0 0 6px var(--accent2)"></div>
+          <div class="task-info">
+            <div class="task-title">💾 ${esc(it.summary||'Checkpoint')}</div>
+            <div class="task-meta">${it.agent} · ${it.id} · ${(it.created_at||'').slice(0,16).replace('T',' ')}</div>
+          </div>
+          <div class="task-badge" style="background:rgba(0,255,157,0.1);color:var(--accent2)">checkpoint</div>
+        </div>`;
+      return `
+        <div class="task-item">
+          <div class="task-status-dot" style="background:var(--accent4)"></div>
+          <div class="task-info">
+            <div class="task-title">🧩 ${esc(it.title||'Knowledge')}</div>
+            <div class="task-meta">${esc((it.content||'').slice(0,80))}</div>
+          </div>
+          <div class="task-badge" style="background:rgba(167,139,250,0.1);color:var(--accent4)">knowledge</div>
+        </div>`;
+    }).join('');
+  }, 200);
+}
+
+// ─────────────────────────────────────────────
+// Tips
+// ─────────────────────────────────────────────
+function renderTips() {
+  const totals = USAGE.totals || {};
+  const sessions = USAGE.sessions || [];
+  const tips = [];
+
+  // Dynamic tips based on data
+  const entries = Object.entries(totals);
+  entries.forEach(([name, stats]) => {
+    if (stats.input_tokens > 0) {
+      const ratio = (stats.output_tokens||0) / stats.input_tokens;
+      if (ratio > 2) tips.push({ icon:'⚠️', text: `<strong>${name}</strong> has a high output/input ratio (${ratio.toFixed(1)}x). Consider tighter prompts or using <code>--max-tokens</code>.` });
+    }
+  });
+
+  const largeSessions = sessions.filter(s => (s.total_tokens||0) > 50000);
+  if (largeSessions.length > 0) tips.push({ icon:'🔴', text: `${largeSessions.length} session(s) used >50K tokens. Run <code>context_optimizer.py --compress</code> to pre-compress contexts.` });
+
+  const tasks = STORE.tasks || [];
+  const inProgress = tasks.filter(t => t.status === 'in_progress');
+  if (inProgress.length > 2) tips.push({ icon:'💡', text: `You have ${inProgress.length} in-progress tasks. Close completed work with <code>--complete --task-id &lt;id&gt;</code> to keep memory clean.` });
+
+  if ((STORE.checkpoints||[]).length === 0 && tasks.length > 0) {
+    tips.push({ icon:'💾', text: 'No checkpoints saved. Save checkpoints every ~30K tokens to recover from context resets.' });
+  }
+
+  const grandTokens = Object.values(totals).reduce((s, t) => s + (t.total_tokens||0), 0);
+  if (grandTokens < 1000) {
+    tips.push({ icon:'📊', text: 'Usage data is sparse. Log token usage after sessions with <code>usage_tracker.py --log</code> to get optimization tips.' });
+  }
+
+  tips.push({ icon:'🧠', text: 'Start every agent session with <code>memory_engine.py --context --agent &lt;name&gt;</code> to inject the current task context.' });
+  tips.push({ icon:'⚡', text: 'Use smaller models (gemini-2.0-flash, gpt-4o-mini) for analysis and research tasks — 90% cheaper for similar quality.' });
+  tips.push({ icon:'🔍', text: 'Search across all past tasks and checkpoints instantly in the Search tab — no database needed.' });
+
+  const el = document.getElementById('tips-list');
+  el.innerHTML = tips.map(t => `
+    <div class="tip-item">
+      <div class="tip-icon">${t.icon}</div>
+      <div class="tip-text">${t.text}</div>
+    </div>`).join('');
+}
+
+// ─────────────────────────────────────────────
+// Utilities
+// ─────────────────────────────────────────────
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  document.getElementById('tab-' + id).classList.add('active');
+}
+
+function fmtTokens(n) {
+  if (n >= 1_000_000) return (n/1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000)     return (n/1_000).toFixed(1) + 'K';
+  return String(n);
+}
+
+function esc(str) {
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function emptyHTML(msg, cmd = '') {
+  return `<div class="empty">
+    <div class="empty-icon">📭</div>
+    <p>${msg}</p>
+    ${cmd ? `<code>${esc(cmd)}</code>` : ''}
+  </div>`;
+}
+
+// ─────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────
+loadData();
+// Auto-refresh every 5 seconds
+setInterval(loadData, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # The main CodeVerse Next.js App
+  codeverse-app:
+    build: 
+      context: .
+      dockerfile: Dockerfile
+    image: codeverse:latest
+    container_name: codeverse-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # Ensure you pass these variables through to your instance in production
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
+      - GITHUB_ID=${GITHUB_ID}
+      - GITHUB_SECRET=${GITHUB_SECRET}
+      - TURSO_DATABASE_URL=${TURSO_DATABASE_URL}
+      - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN}
+      # Tell the app where local workspaces are mounted
+      - DATA_PATH=/app/codeverse-data
+    volumes:
+      # CRITICAL: Mount the host machine's docker socket so this container can spawn siblings
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount persistent storage for your workspaces
+      - codeverse_data:/app/codeverse-data
+
+volumes:
+  codeverse_data:
+    driver: local

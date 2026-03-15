@@ -1,0 +1,85 @@
+{
+  "version": "1.0.0",
+  "created_at": "2026-03-02T14:13:49+05:30",
+  "tasks": [
+    {
+      "id": "6dd703be",
+      "title": "Redesign Architecture to Cloud IDE Orchestrator Spec",
+      "agent": "antigravity",
+      "description": "Implementing the user's specific JSON spec for Turso workspaces table, Dockerode proxy mapping, and NextAuth.",
+      "status": "completed",
+      "tags": [],
+      "created_at": "2026-03-03T10:00:08.034211+05:30",
+      "updated_at": "2026-03-03T10:21:55.603432+05:30",
+      "checkpoints": [],
+      "completion_summary": "Completed Phase 18 Cloud IDE Orchestrator redo. Implemented Turso DB orchestration, Bento-box dashboard, Booting terminal UI, container networking idle sleep checks, and passed strict tsc type checks."
+    },
+    {
+      "id": "a3881578",
+      "title": "Testing mem CLI aliases",
+      "agent": "antigravity",
+      "description": "Final integration test",
+      "status": "in_progress",
+      "tags": [],
+      "created_at": "2026-03-02T14:56:42.716422+05:30",
+      "updated_at": "2026-03-02T14:56:42.716422+05:30",
+      "checkpoints": []
+    },
+    {
+      "id": "c5239484",
+      "title": "Optimizer Test Task",
+      "agent": "test_runner",
+      "description": "",
+      "status": "in_progress",
+      "tags": [],
+      "created_at": "2026-03-02T14:38:25.370944+05:30",
+      "updated_at": "2026-03-02T14:38:25.389279+05:30",
+      "checkpoints": [
+        "42d87da5"
+      ]
+    },
+    {
+      "id": "1cd7d64d",
+      "title": "Test Task: Memory Engine Validation",
+      "agent": "test_runner",
+      "description": "Verifying read/write/compress/search cycle",
+      "status": "completed",
+      "tags": [],
+      "created_at": "2026-03-02T14:37:44.434421+05:30",
+      "updated_at": "2026-03-02T14:37:44.491603+05:30",
+      "checkpoints": [
+        "1e9737b3"
+      ],
+      "completion_summary": "All engine tests passed"
+    }
+  ],
+  "checkpoints": [
+    {
+      "id": "42d87da5",
+      "task_id": "c5239484",
+      "agent": "test_runner",
+      "summary": "Auto-checkpoint at 2026-03-02T14:38:25.378203+05:30 — original 12250 tokens, compressed to 309",
+      "compressed_context": "The agent memory system stores tasks and checkpoints locally. The agent memory system stores tasks and checkpoints locally. The agent memory system stores tasks and checkpoints locally. The agent memory system stores tasks and checkpoints locally. The agent memory system stores tasks and checkpoints locally. The agent memory system stores tasks and checkpoints locally. The agent memory system stores tasks and checkpoints locally. The agent memory system stores tasks and checkpoints locally. The agent memory system stores tasks and checkpoints locally. The agent memory system stores tasks and checkpoints locally.",
+      "token_estimate": 154,
+      "created_at": "2026-03-02T14:38:25.389279+05:30"
+    },
+    {
+      "id": "1e9737b3",
+      "task_id": "1cd7d64d",
+      "agent": "test_runner",
+      "summary": "Step 1 complete",
+      "compressed_context": "The memory engine stores tasks and checkpoints. It supports any agent. Compression reduces large context to key sentences. Search finds relevant tasks by keyword matching.",
+      "token_estimate": 42,
+      "created_at": "2026-03-02T14:37:44.455486+05:30"
+    }
+  ],
+  "knowledge": [
+    {
+      "id": "74cd4891",
+      "title": "Dynamic agents",
+      "content": "Any agent name is valid — no hardcoded list",
+      "tags": [],
+      "created_at": "2026-03-02T14:37:44.481652+05:30"
+    }
+  ]
+}

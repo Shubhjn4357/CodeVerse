@@ -1,17 +1,35 @@
-// @ts-nocheck
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { useAgentStore } from "@/store/agent";
 import { MODELS } from "@/constants/pricing";
-import { PlanView, PlanStep } from "./PlanView";
-import { motion, AnimatePresence } from "framer-motion";
+import { PlanView } from "./PlanView";
 import {
-    Bot, Send, Square, Play, Code2, Cpu, Settings, FileCode2, Command
+    Bot, Send, Square, Code2, Cpu, Command
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { toast } from "sonner";
+
+interface ExtendedMessage {
+    id: string;
+    role: "user" | "assistant" | "system" | "tool";
+    content: string;
+    toolInvocations?: Array<{
+        toolCallId: string;
+        toolName: string;
+        args: Record<string, unknown>;
+        state: 'call' | 'result';
+        result?: unknown;
+    }>;
+}
+
+interface UseChatHelpers {
+    messages: unknown[];
+    append: (message: { role: "user" | "assistant" | "system" | "tool"; content: string }) => Promise<string | undefined | null>;
+    stop: () => void;
+    isLoading: boolean;
+}
 
 export default function AgentChat() {
     const { mode, setMode, modelId, setModelId, planSteps, setPlanSteps, systemPrompt } = useAgentStore();
@@ -20,8 +38,7 @@ export default function AgentChat() {
     const [activeTab, setActiveTab] = useState<"chat" | "plan">("chat");
 
     // Execute mode: Standard Vercel AI useChat with tool calls capabilities mapped to route.ts
-    // @ts-ignore - Ignore type mismatches across AI SDK versions
-    const { messages, append, stop, isLoading } = useChat({
+    const chatOptions = {
         api: "/api/agent",
         body: {
             modelId,
@@ -29,10 +46,15 @@ export default function AgentChat() {
             systemPrompt,
             byokKey: localStorage.getItem("codeverse_byok") || undefined,
         },
-        onError: (err) => {
+        onError: (err: Error) => {
             toast.error(err.message || "Agent execution failed");
         }
-    });
+    };
+
+    const chat = useChat(chatOptions as unknown as Parameters<typeof useChat>[0]) as unknown as UseChatHelpers;
+
+    const messages = chat.messages as unknown as ExtendedMessage[];
+    const { append, stop, isLoading } = chat;
 
     const generatePlan = async (query: string) => {
         setIsPlanning(true);
@@ -54,12 +76,12 @@ export default function AgentChat() {
             });
 
             if (!res.ok) throw new Error("Failed to generate plan");
-            const data = await res.json();
+            const data = await res.json() as { steps: Array<{ id: string; description: string; filesData?: string[] }> };
 
-            setPlanSteps(data.steps.map((s: any) => ({ ...s, status: "pending" })));
-            // Auto-switch to plan view
-        } catch (e: any) {
-            toast.error(e.message || "Plan generation failed");
+            setPlanSteps(data.steps.map(s => ({ ...s, status: "pending" as const })));
+        } catch (e: unknown) {
+            const error = e instanceof Error ? e : new Error(String(e));
+            toast.error(error.message || "Plan generation failed");
         } finally {
             setIsPlanning(false);
         }
@@ -100,9 +122,18 @@ export default function AgentChat() {
                     onChange={(e) => setModelId(e.target.value)}
                 >
                     {Object.values(MODELS).map(m => (
-                        <option key={m.id} value={m.id}>{m.name} ({m.provider})</option>
+                        <option key={m.id} value={m.id}>
+                            {m.provider === 'ollama' ? '🏠 ' : ''}{m.name} {m.provider === 'ollama' ? '(Free)' : `(${m.provider})`}
+                        </option>
                     ))}
                 </select>
+                {MODELS[modelId]?.provider === 'ollama' && (
+                    <div className="absolute top-12 right-3 z-20">
+                         <div className="px-2 py-0.5 bg-green-500/10 text-green-500 text-[10px] font-bold rounded-full border border-green-500/20 flex items-center gap-1 animate-pulse">
+                            <Cpu size={10} /> LOCAL & FREE
+                         </div>
+                    </div>
+                )}
             </div>
 
             {/* Tabs */}
@@ -131,7 +162,7 @@ export default function AgentChat() {
                             <p className="text-xs">I will execute your requests directly using MCP tools.</p>
                         </div>
                     ) : (
-                        messages.map(m => (
+                        messages.map((m: ExtendedMessage) => (
                             <div key={m.id} className={`flex flex-col gap-1 ${m.role === "user" ? "items-end" : "items-start"}`}>
                                 <div className="flex items-center gap-1.5 text-[10px] text-(--text-muted) uppercase tracking-wider font-semibold mb-1">
                                     {m.role === "assistant" ? <Bot size={11} /> : null}
@@ -140,12 +171,20 @@ export default function AgentChat() {
                                 <div className={`text-xs max-w-[90%] p-3 rounded-xl border ${m.role === "user" ? "bg-(--accent) text-(--text-on-accent) border-transparent rounded-tr-none" : "bg-(--bg-2) border-(--border-subtle) rounded-tl-none overflow-x-auto"}`}>
                                     <ReactMarkdown
                                         components={{
-                                            code: ({ node, inline, className, children, ...props }: any) => {
-                                                return inline ?
-                                                    <code className="bg-black/20 px-1 rounded font-mono text-[10px]" {...props}>{children}</code> :
-                                                    <pre className="bg-black/20 p-2 rounded overflow-auto font-mono text-[10px] mt-2 border border-black/10" {...props}>
-                                                        <code>{children}</code>
+                                            code({ children, ...props }) {
+                                                // React-Markdown v8+ uses 'inline' in a different way or passing it via props
+                                                // We can check if it's a code block vs inline code by checking for newlines or class
+                                                const isInline = !props.className?.includes('language-');
+                                                const content = String(children || "").replace(/\n$/, "");
+                                                
+                                                if (isInline) {
+                                                    return <code className="bg-black/20 px-1 rounded font-mono text-[10px]" {...props}>{children}</code>;
+                                                }
+                                                return (
+                                                    <pre className="bg-black/20 p-2 rounded overflow-auto font-mono text-[10px] mt-2 border border-black/10">
+                                                        <code {...props}>{content}</code>
                                                     </pre>
+                                                );
                                             }
                                         }}
                                     >

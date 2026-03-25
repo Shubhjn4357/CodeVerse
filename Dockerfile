@@ -48,9 +48,9 @@ COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 # Switch to the non-root user
 USER nextjs
 
-EXPOSE 3000
+EXPOSE 7860
 
-ENV PORT 3000
+ENV PORT 7860
 ENV HOSTNAME "0.0.0.0"
 
 # Note: server.js is created by next build from the standalone output

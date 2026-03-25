@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Loader2, ServerCrash, Smartphone } from "lucide-react";
 import { EmulatorPane } from "./EmulatorPane";
 
+import { useEmulator } from "@/hooks/useEmulator";
+
 interface VSCodeFrameProps {
     workspaceId: string;
 }
@@ -12,11 +14,10 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
     const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
     const [port, setPort] = useState<string | null>(null);
     const [androidPort, setAndroidPort] = useState<string | null>(null);
-    const [showEmulator, setShowEmulator] = useState(false);
-
     const [appetizeUrl, setAppetizeUrl] = useState<string | null>(null);
-
     const [buildLogs, setBuildLogs] = useState<string[]>([]);
+
+    const emulator = useEmulator("android");
 
     useEffect(() => {
         const events = new EventSource(`/api/workspace/stream?id=${workspaceId}&withAndroid=true`);
@@ -38,7 +39,7 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                     if (data.appetizeUrl) setAppetizeUrl(data.appetizeUrl);
                     if (data.androidPort) {
                         setAndroidPort(data.androidPort);
-                        setShowEmulator(true);
+                        emulator.setIsOpen(true);
                     }
                     setTimeout(() => setStatus("ready"), 1500);
                 } else {
@@ -56,7 +57,7 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
         });
 
         return () => events.close();
-    }, [workspaceId]);
+    }, [workspaceId, emulator]);
 
     if (status === "loading") {
         return (
@@ -65,7 +66,6 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                 <p className="animate-pulse">Provisioning containerized VS Code engine...</p>
                 <div className="text-xs opacity-60">Initializing code-server, binding LSPs, and mapping volumes.</div>
 
-                {/* Build Logs Terminal */}
                 <div className="w-full max-w-2xl bg-black rounded-lg p-4 font-mono text-xs overflow-y-auto h-64 mt-8 shadow-xl border border-gray-800 flex flex-col items-start text-left">
                     {buildLogs.map((log, i) => (
                         <div key={i} className="text-gray-300 w-full break-all">
@@ -76,7 +76,6 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                     <div className="animate-pulse text-gray-500 mt-2">_</div>
                 </div>
 
-                {/* Note about KVM loading which can take time */}
                 <div className="text-[10px] opacity-40 mt-4">Also booting Android Container (This takes significantly longer...)</div>
             </div>
         );
@@ -96,15 +95,11 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
     }
 
     const targetUrl = `http://localhost:${port}/?folder=/config/workspace`;
-
-    // We assume the Next.js dev server runs on port 3000 locally, but in a real Dockerized env, 
-    // we'd want to point to the user project port. Defaulting to 3000 for the iOS simulated frame.
     const devServerPort = "3000";
 
     return (
         <div className="w-full h-full flex overflow-hidden">
-            {/* Main VS Code Panel */}
-            <div className={`relative h-full transition-all duration-300 ${showEmulator ? 'w-[60%]' : 'w-full'}`}>
+            <div className={`relative h-full transition-all duration-300 ${emulator.isOpen ? 'w-[60%]' : 'w-full'}`}>
                 <iframe
                     src={targetUrl}
                     className="w-full h-full border-0 bg-(--bg)"
@@ -112,26 +107,31 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                     title="CodeVerse Remote Engine"
                 />
 
-                {/* Toggle Button when Emulators are hidden */}
-                {!showEmulator && (
+                {!emulator.isOpen && (
                     <button
-                        onClick={() => setShowEmulator(true)}
-                        className="absolute bottom-6 right-6 p-3 bg-(--accent) text-white rounded-full shadow-xl hover:opacity-90 hover:scale-105 transition-all z-50 flex items-center justify-center"
+                        onClick={emulator.toggleOpen}
+                        className="absolute bottom-6 right-6 p-4 bg-(--accent) text-white rounded-full shadow-2xl hover:opacity-90 hover:scale-110 active:scale-95 transition-all z-50 flex items-center justify-center border border-white/20"
                         title="Open Built-in Emulators"
                     >
-                        <Smartphone size={20} />
+                        <Smartphone size={22} />
                     </button>
                 )}
             </div>
 
             {/* Emulator Side Panel */}
-            {showEmulator && (
+            {emulator.isOpen && (
                 <div className="w-[40%] h-full flex flex-col min-w-[320px]">
                     <EmulatorPane
+                        platform={emulator.platform}
+                        setPlatform={emulator.changePlatform}
+                        refreshKey={emulator.refreshKey}
+                        isLoading={emulator.isLoading}
+                        onRefresh={emulator.refreshIframe}
+                        onClose={emulator.closeEmulator}
                         androidPort={androidPort}
                         devServerPort={devServerPort}
                         appetizeUrl={appetizeUrl}
-                        onClose={() => setShowEmulator(false)}
+                        workspaceId={workspaceId}
                     />
                 </div>
             )}

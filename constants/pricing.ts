@@ -143,5 +143,17 @@ export const MODELS: Record<string, AgentModel> = {
         supportsTools: true,
         costInputPerM: 0.30,
         costOutputPerM: 0.90,
+    },
+    
+    // Local / Ollama (Free Tier)
+    "ollama/qwen2.5-coder:1.5b": {
+        id: "ollama/qwen2.5-coder:1.5b",
+        name: "Qwen 2.5 Coder 1.5B (Local)",
+        provider: "ollama",
+        contextWindow: 32000,
+        supportsVision: false,
+        supportsTools: true,
+        costInputPerM: 0.0,
+        costOutputPerM: 0.0,
     }
 };

@@ -204,6 +204,7 @@ const TursoAdapter = {
 
 const authOptions = {
   adapter: TursoAdapter as unknown as Adapter,
+  trustHost: true,
   providers: [
     GitHubProvider({
       clientId: process.env.GITHUB_ID ?? "",

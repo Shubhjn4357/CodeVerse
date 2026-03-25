@@ -1,21 +1,21 @@
 import simpleGit, { SimpleGit, SimpleGitOptions } from 'simple-git';
 
-const WORKSPACE_ROOT = process.cwd();
-
 const options: Partial<SimpleGitOptions> = {
-    baseDir: WORKSPACE_ROOT,
     binary: 'git',
     maxConcurrentProcesses: 6,
     trimmed: false,
 };
 
-export const git: SimpleGit = simpleGit(options);
+export function getGit(baseDir: string = process.cwd()): SimpleGit {
+    return simpleGit({ ...options, baseDir });
+}
 
-export async function getGitStatus() {
-    const isRepo = await git.checkIsRepo();
+export async function getGitStatus(baseDir?: string) {
+    const instance = getGit(baseDir);
+    const isRepo = await instance.checkIsRepo();
     if (!isRepo) return null;
 
-    const status = await git.status();
+    const status = await instance.status();
     return {
         currentBranch: status.current,
         modified: status.modified,
@@ -28,38 +28,45 @@ export async function getGitStatus() {
     };
 }
 
-export async function getBranchList() {
-    const branches = await git.branch();
+export async function getBranchList(baseDir?: string) {
+    const instance = getGit(baseDir);
+    const branches = await instance.branch();
     return {
         all: branches.all,
         current: branches.current
     };
 }
 
-export async function commitFiles(message: string, files: string[] = []) {
+export async function commitFiles(message: string, files: string[] = [], baseDir?: string) {
+    const instance = getGit(baseDir);
     if (files.length > 0) {
-        await git.add(files);
+        await instance.add(files);
     } else {
-        await git.add('.');
+        await instance.add('.');
     }
-    return git.commit(message);
+    return instance.commit(message);
 }
 
-export async function getFileDiff(file: string) {
-    return git.diff([file]);
+export async function getFileDiff(file: string, baseDir?: string) {
+    return getGit(baseDir).diff([file]);
 }
 
-export async function pushBranch() {
-    return git.push();
+export async function pushBranch(baseDir?: string) {
+    return getGit(baseDir).push();
 }
 
-export async function pullBranch() {
-    return git.pull();
+export async function pullBranch(baseDir?: string) {
+    return getGit(baseDir).pull();
 }
 
-export async function checkoutBranch(branch: string, create: boolean = false) {
+export async function checkoutBranch(branch: string, create: boolean = false, baseDir?: string) {
+    const instance = getGit(baseDir);
     if (create) {
-        return git.checkoutLocalBranch(branch);
+        return instance.checkoutLocalBranch(branch);
     }
-    return git.checkout(branch);
+    return instance.checkout(branch);
 }
+
+
+// Export for legacy access if needed, but discouraged
+// export { git } from 'simple-git'; 

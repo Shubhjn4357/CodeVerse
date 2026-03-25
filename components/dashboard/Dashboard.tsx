@@ -190,8 +190,8 @@ export default function Dashboard() {
                     <div className="h-4 w-px bg-(--border)" />
                     <div className="flex items-center gap-3 pl-1">
                         <div className="flex flex-col items-end">
-                            <span className="text-sm font-semibold text-(--text) leading-tight">{session?.user?.name || "Developer"}</span>
-                            <span className="text-[10px] text-(--text-muted) font-mono">{session?.user?.email || "studio@domain.com"}</span>
+                            <span className="text-sm font-semibold text-(--text) leading-tight">{session?.user?.name || "User"}</span>
+                            <span className="text-[10px] text-(--text-muted) font-mono">{session?.user?.email || "anonymous@codeverse.io"}</span>
                         </div>
                         {session?.user?.image ? (
                             <Image unoptimized src={session.user.image} alt="Profile" width={36} height={36} className="w-9 h-9 rounded-full ring-2 ring-(--border-subtle)" />
@@ -211,7 +211,7 @@ export default function Dashboard() {
                     {/* Greeting */}
                     <div>
                         <h1 className="text-2xl font-bold text-(--text)">
-                            Hello, <span className="text-(--accent)">Developer</span>
+                            Hello, <span className="text-(--accent)">{session?.user?.name?.split(" ")[0] || "User"}</span>
                         </h1>
                         <p className="text-(--text-2) text-sm mt-1">Welcome back to CodeVerse Studio</p>
                     </div>

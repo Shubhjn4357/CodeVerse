@@ -49,9 +49,9 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Missing workspace id" }, { status: 400 });
         }
 
-        // Verify ownership
+        // Verify ownership and get project name
         const verifyObj = await db.execute({
-            sql: "SELECT id FROM workspaces WHERE id = ? AND user_id = ?",
+            sql: "SELECT id, project_name FROM workspaces WHERE id = ? AND user_id = ?",
             args: [id, session.user.id]
         });
 
@@ -59,9 +59,17 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Workspace not found or unauthorized" }, { status: 404 });
         }
 
+        const projectName = verifyObj.rows[0].project_name as string;
+
         if (action === "start") {
             const { withAndroidEmulator } = body;
-            const result = await startWorkspaceContainer({ id, image, withAndroidEmulator });
+            const result = await startWorkspaceContainer({ 
+                id, 
+                userId: session.user.id, 
+                projectName,
+                image, 
+                withAndroidEmulator 
+            });
             if (result.success) {
                 await db.execute({
                     sql: "UPDATE workspaces SET status = 'running', container_id = ?, android_container_id = ?, android_port = ? WHERE id = ?",
@@ -84,7 +92,13 @@ export async function POST(req: Request) {
             await stopWorkspaceContainer(id, true);
 
             // 2. Recreate them (this will pick up codeverse.json changes)
-            const result = await startWorkspaceContainer({ id, image, withAndroidEmulator });
+            const result = await startWorkspaceContainer({ 
+                id, 
+                userId: session.user.id, 
+                projectName,
+                image, 
+                withAndroidEmulator 
+            });
 
             if (result.success) {
                 await db.execute({

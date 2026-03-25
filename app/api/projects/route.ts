@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import path from "path";
 import fs from "fs/promises";
 import simpleGit from "simple-git";
 import { spawn } from "child_process";
@@ -8,11 +7,9 @@ import { auth } from "@/auth";
 import { db } from "@/lib/db";
 import { randomUUID } from "crypto";
 
-const WORKSPACE_ROOT = path.join(process.cwd(), "workspaces");
+import { resolveSafePath } from "@/lib/fs/isolation";
 
-async function ensureWorkspaceRoot() {
-    await fs.mkdir(WORKSPACE_ROOT, { recursive: true });
-}
+// Removed global WORKSPACE_ROOT
 
 // POST /api/projects
 export async function POST(req: NextRequest) {
@@ -37,7 +34,11 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET() {
-    return handleList();
+    const session = await auth();
+    if (!session?.user?.id) {
+        return NextResponse.json({ projects: [] });
+    }
+    return handleList(session.user.id);
 }
 
 export async function DELETE(req: NextRequest) {
@@ -65,13 +66,9 @@ export async function DELETE(req: NextRequest) {
         }
 
         const projectName = res.rows[0].project_name as string;
-        const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
-
-        // Remove from filesystem
-        const targetPath = path.join(WORKSPACE_ROOT, safeName);
-        if (targetPath.startsWith(WORKSPACE_ROOT)) {
-            await fs.rm(targetPath, { recursive: true, force: true });
-        }
+        const targetPath = await resolveSafePath(session.user.id, projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60));
+        
+        await fs.rm(targetPath, { recursive: true, force: true });
 
         // Remove from database
         await db.execute({
@@ -88,30 +85,29 @@ export async function DELETE(req: NextRequest) {
     }
 }
 
-async function handleList() {
-    const session = await auth();
-    if (!session?.user?.id) {
-        return NextResponse.json({ projects: [] });
-    }
-
+async function handleList(userId: string) {
     try {
         const res = await db.execute({
             sql: "SELECT * FROM workspaces WHERE user_id = ?",
-            args: [session.user.id]
+            args: [userId]
         });
 
-        const projects = res.rows.map(row => ({
-            id: row.id,
-            name: row.project_name,
-            path: path.join(WORKSPACE_ROOT, (row.project_name as string).replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60)),
-            containerStatus: row.status,
-            gitRemote: "", // We could fetch this on demand or ignore it for the DB view
-            hasPackageJson: true,
-            starred: false
+        const projects = await Promise.all(res.rows.map(async row => {
+            const safeName = (row.project_name as string).replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
+            return {
+                id: row.id,
+                name: row.project_name,
+                path: await resolveSafePath(userId, safeName),
+                containerStatus: row.status,
+                gitRemote: "", 
+                hasPackageJson: true,
+                starred: false
+            };
         }));
 
         return NextResponse.json({ projects });
-    } catch {
+    } catch (e) {
+        console.error("[PROJECTS_LIST_ERROR]", e);
         return NextResponse.json({ projects: [] });
     }
 }
@@ -122,9 +118,8 @@ async function handleClone(req: NextRequest, userId: string) {
         return NextResponse.json({ error: "repoUrl and projectName are required" }, { status: 400 });
     }
 
-    await ensureWorkspaceRoot();
     const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
-    const dest = path.join(WORKSPACE_ROOT, safeName);
+    const dest = await resolveSafePath(userId, safeName);
 
     // Stream progress via SSE
     const encoder = new TextEncoder();
@@ -173,9 +168,8 @@ async function handleScaffold(req: NextRequest, userId: string) {
         return NextResponse.json({ error: "templateId and projectName are required" }, { status: 400 });
     }
 
-    await ensureWorkspaceRoot();
     const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
-    const dest = path.join(WORKSPACE_ROOT, safeName);
+    const dest = await resolveSafePath(userId, safeName);
     await fs.mkdir(dest, { recursive: true });
 
     // Template scaffold commands (IDs must exactly match TEMPLATE_REGISTRY ids in constants/extensions.ts)

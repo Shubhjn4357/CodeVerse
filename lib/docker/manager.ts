@@ -7,7 +7,9 @@ const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe
 
 export interface WorkspaceConfig {
     id: string;
-    image?: string; // e.g., 'codercom/code-server:latest'
+    userId: string;
+    projectName: string;
+    image?: string; 
     withAndroidEmulator?: boolean;
     onLog?: (msg: string) => void;
 }
@@ -17,7 +19,7 @@ export interface WorkspaceConfig {
  * Optionally spins up a sidecar Android emulator container.
  */
 export async function startWorkspaceContainer(config: WorkspaceConfig) {
-    const { id, withAndroidEmulator = false, onLog = console.log } = config;
+    const { id, userId, projectName, withAndroidEmulator = false, onLog = console.log } = config;
     const containerName = `codeverse-workspace-${id}`;
     const androidContainerName = `codeverse-android-${id}`;
 
@@ -44,7 +46,8 @@ export async function startWorkspaceContainer(config: WorkspaceConfig) {
         }
 
         // Map the local host path to the workspace
-        const dataPath = process.env.DATA_PATH || path.resolve(process.cwd(), 'data/projects', id);
+        const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
+        const dataPath = process.env.DATA_PATH || path.resolve(process.cwd(), 'workspaces', userId, safeName);
 
         // --- WORKSPACE CONFIG LOGIC AND IMAGE BUILDING ---
         const { buildWorkspaceImage } = await import('./builder');
@@ -161,7 +164,8 @@ export async function startWorkspaceContainer(config: WorkspaceConfig) {
     if (!appetizeUrl) {
         try {
             const fs = await import('fs/promises');
-            const dataPath = process.env.DATA_PATH || path.resolve(process.cwd(), 'data/projects', id);
+            const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
+            const dataPath = process.env.DATA_PATH || path.resolve(process.cwd(), 'workspaces', userId, safeName);
             const configPath = path.join(dataPath, 'codeverse.json');
             const configContent = await fs.readFile(configPath, 'utf8');
             const customConfig = JSON.parse(configContent);

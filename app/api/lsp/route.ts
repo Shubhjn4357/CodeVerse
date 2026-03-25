@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
+import { auth } from "@/auth";
+import { resolveSafePath } from "@/lib/fs/isolation";
 
 // Language Server mapping: extension → command to start the language server
 const LSP_SERVERS: Record<string, { cmd: string; args: string[] }> = {
@@ -15,6 +17,10 @@ const LSP_SERVERS: Record<string, { cmd: string; args: string[] }> = {
 const activeServers = new Map<string, ReturnType<typeof spawn>>();
 
 export async function GET(req: NextRequest) {
+    const session = await auth();
+    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const userId = session.user.id;
+
     const { searchParams } = new URL(req.url);
     const lang = searchParams.get("lang");
 
@@ -22,7 +28,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({
             available: Object.keys(LSP_SERVERS),
             status: Object.fromEntries(
-                Object.keys(LSP_SERVERS).map(l => [l, activeServers.has(l) ? "running" : "idle"])
+                Object.keys(LSP_SERVERS).map(l => [l, activeServers.has(`${userId}:${l}`) ? "running" : "idle"])
             )
         });
     }
@@ -40,49 +46,57 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+    const session = await auth();
+    if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const userId = session.user.id;
+
     try {
-        const { action, lang } = await req.json();
+        const { action, lang, workspaceName } = await req.json();
 
         if (action === "start") {
             if (!lang) return NextResponse.json({ error: "lang required" }, { status: 400 });
+            if (!workspaceName) return NextResponse.json({ error: "workspaceName required" }, { status: 400 });
 
             const config = LSP_SERVERS[lang];
             if (!config) return NextResponse.json({ error: `No LSP for .${lang}` }, { status: 404 });
 
-            if (activeServers.has(lang)) {
+            const serverKey = `${userId}:${lang}`;
+            if (activeServers.has(serverKey)) {
                 return NextResponse.json({ status: "already_running" });
             }
 
             try {
+                const projectRoot = await resolveSafePath(userId, workspaceName);
                 const proc = spawn(config.cmd, config.args, {
-                    cwd: process.cwd(),
+                    cwd: projectRoot,
                     stdio: ["pipe", "pipe", "pipe"],
                     shell: process.platform === "win32"
                 });
 
-                activeServers.set(lang, proc);
+                activeServers.set(serverKey, proc);
 
-                proc.on("exit", () => activeServers.delete(lang));
+                proc.on("exit", () => activeServers.delete(serverKey));
                 proc.on("error", (err) => {
-                    console.warn(`LSP ${lang}: ${err.message} — install ${config.cmd} to enable`);
-                    activeServers.delete(lang);
+                    console.warn(`LSP ${lang} for ${userId}: ${err.message}`);
+                    activeServers.delete(serverKey);
                 });
 
                 return NextResponse.json({ status: "started", pid: proc.pid });
-            } catch {
+            } catch (e: unknown) {
                 return NextResponse.json({
                     status: "unavailable",
-                    message: `Install '${config.cmd}' to enable LSP for .${lang} files.`
+                    message: (e as Error).message
                 });
             }
         }
 
         if (action === "stop") {
             if (!lang) return NextResponse.json({ error: "lang required" }, { status: 400 });
-            const proc = activeServers.get(lang);
+            const serverKey = `${userId}:${lang}`;
+            const proc = activeServers.get(serverKey);
             if (proc) {
                 proc.kill();
-                activeServers.delete(lang);
+                activeServers.delete(serverKey);
             }
             return NextResponse.json({ status: "stopped" });
         }

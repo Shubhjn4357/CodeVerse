@@ -1,9 +1,15 @@
 import { NextRequest } from 'next/server';
 import { startWorkspaceContainer } from '@/lib/docker/manager';
+import { auth } from '@/auth';
+import { db } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
+    const session = await auth();
+    if (!session?.user?.id) return new Response('Unauthorized', { status: 401 });
+    const userId = session.user.id;
+
     const searchParams = req.nextUrl.searchParams;
     const id = searchParams.get('id');
     const withAndroid = searchParams.get('withAndroid') === 'true';
@@ -11,6 +17,18 @@ export async function GET(req: NextRequest) {
     if (!id) {
         return new Response('Missing workspace id', { status: 400 });
     }
+
+    // Verify ownership and get project name
+    const verifyObj = await db.execute({
+        sql: "SELECT project_name FROM workspaces WHERE id = ? AND user_id = ?",
+        args: [id, session.user.id]
+    });
+
+    if (verifyObj.rows.length === 0) {
+        return new Response('Workspace not found or unauthorized', { status: 404 });
+    }
+
+    const projectName = verifyObj.rows[0].project_name as string;
 
     const encoder = new TextEncoder();
 
@@ -24,9 +42,13 @@ export async function GET(req: NextRequest) {
 
             try {
                 // Initialize workspace and pipe logs directly from the Docker builder engine to SSE client
-                const result = await startWorkspaceContainer(
-                    { id, withAndroidEmulator: withAndroid, onLog: (msg) => sendEvent('log', msg) }
-                );
+                const result = await startWorkspaceContainer({ 
+                    id: id as string, 
+                    userId: userId,
+                    projectName: projectName,
+                    withAndroidEmulator: withAndroid, 
+                    onLog: (msg) => sendEvent('log', msg) 
+                });
                 
                 // Completed
                 sendEvent('ready', {

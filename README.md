@@ -1,8 +1,8 @@
 ---
 title: CodeVerse
 emoji: 🚀
-colorFrom: blue
-colorTo: purple
+colorFrom: yellow
+colorTo: green
 sdk: docker
 app_port: 7860
 pinned: false

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { spawn } from "child_process";
-import path from "path";
 
 // Language Server mapping: extension → command to start the language server
 const LSP_SERVERS: Record<string, { cmd: string; args: string[] }> = {
@@ -89,7 +88,8 @@ export async function POST(req: NextRequest) {
         }
 
         return NextResponse.json({ error: "Unknown action" }, { status: 400 });
-    } catch (error: any) {
+    } catch (e: unknown) {
+        const error = e instanceof Error ? e : new Error(String(e));
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

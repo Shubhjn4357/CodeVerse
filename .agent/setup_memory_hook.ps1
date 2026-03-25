@@ -16,13 +16,15 @@ param(
 )
 
 $ScriptDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
-$WorkDir    = Split-Path -Parent $ScriptDir
+$WorkspaceRoot = Split-Path -Parent $ScriptDir
+$RepoDir    = if (Test-Path (Join-Path $ScriptDir ".git")) { $ScriptDir } else { $WorkspaceRoot }
 $MemPy      = Join-Path $ScriptDir "scripts\mem.py"
 $CompPy     = Join-Path $ScriptDir "scripts\shell_completions.py"
+$SyncPy     = Join-Path $ScriptDir "scripts\sync_workspaces.py"
 $PostCommitPy = Join-Path $ScriptDir "hooks\post-commit.py"
 
 function Install-GitHook {
-    $gitDir = Join-Path $WorkDir ".git"
+    $gitDir = Join-Path $RepoDir ".git"
     if (-not (Test-Path $gitDir)) {
         Write-Host "  SKIP: No .git directory found - skipping git hook" -ForegroundColor Yellow
         return
@@ -33,6 +35,45 @@ function Install-GitHook {
     $content = "#!/bin/sh`npython `"$($PostCommitPy.Replace('\','/'))`""
     Set-Content -Path $hookFile -Value $content -Encoding utf8 -NoNewline
     Write-Host "  OK: Git post-commit hook installed" -ForegroundColor Green
+}
+
+function Remove-AgentMemorySystemContent {
+    param([AllowEmptyString()][string]$Content)
+
+    if ([string]::IsNullOrEmpty($Content)) {
+        return ""
+    }
+
+    $beginMatches = [regex]::Matches($Content, '## BEGIN: AgentMemorySystem')
+    $endMatches   = [regex]::Matches($Content, '## END: AgentMemorySystem[^\r\n]*')
+
+    if ($beginMatches.Count -eq 0 -and $endMatches.Count -eq 0) {
+        return $Content.TrimEnd()
+    }
+
+    $start = if ($beginMatches.Count -gt 0) { $beginMatches[0].Index } else { 0 }
+    $endIndex = if ($endMatches.Count -gt 0) {
+        $lastEnd = $endMatches[$endMatches.Count - 1]
+        $lastEnd.Index + $lastEnd.Length
+    } else {
+        $Content.Length
+    }
+
+    while ($endIndex -lt $Content.Length -and ($Content[$endIndex] -eq "`r" -or $Content[$endIndex] -eq "`n")) {
+        $endIndex++
+    }
+
+    $prefix = if ($start -gt 0) { $Content.Substring(0, $start).TrimEnd() } else { "" }
+    $suffix = if ($endIndex -lt $Content.Length) { $Content.Substring($endIndex).TrimStart() } else { "" }
+
+    if ([string]::IsNullOrWhiteSpace($prefix)) {
+        return $suffix.TrimEnd()
+    }
+    if ([string]::IsNullOrWhiteSpace($suffix)) {
+        return $prefix.TrimEnd()
+    }
+
+    return ($prefix + [Environment]::NewLine + [Environment]::NewLine + $suffix).TrimEnd()
 }
 
 $profileBlock = @'
@@ -84,7 +125,7 @@ function global:Get-AgentDir {
 
 # -- Tab completion ---------------------------------------------------------
 $global:_mem_cmds   = @("status","init","ctx","write","cp","log","search","done","report","tips","watch","know","open","analyze","compress","agent","read","help")
-$global:_mem_agents = @("antigravity","gemini","claude","codex","cursor","copilot","jetbrains-ai","zed-ai","sublime","terminal","warp","my_script")
+$global:_mem_agents = @("antigravity","gemini","claude","codex","cursor","copilot","jetbrains-ai","zed-ai","sublime","terminal","warp","my_script","claw","tiny-claw","pico-claw","micro-claw","nano-claw","rtiny-claw")
 $global:_mem_models = @("gemini-2.5-pro","gemini-2.0-flash","claude-3-7-sonnet","claude-3-5-haiku","gpt-4o","gpt-4o-mini","o3","codex-davinci","default")
 
 Register-ArgumentCompleter -Native -CommandName @('mem','mem-ctx','mem-write','mem-cp','mem-log','mem-search','mem-done','mem-report') -ScriptBlock {
@@ -124,17 +165,18 @@ Register-ArgumentCompleter -Native -CommandName @('mem','mem-ctx','mem-write','m
 
 # -- Auto-activate on cd ----------------------------------------------------
 function global:Invoke-AgentMemoryHook {
+    if ($global:_mem_activated) { return }
     $agentDir = Get-AgentDir
     if ($agentDir) {
         $activate = Join-Path $agentDir "scripts\activate.py"
         if (Test-Path $activate) {
             python "$activate" 2>$null
+            $global:_mem_activated = $true
         }
     }
 }
 
 function global:Set-Location {
-    param([string]$Path)
     Microsoft.PowerShell.Management\Set-Location @args
     Invoke-AgentMemoryHook
 }
@@ -148,8 +190,8 @@ Invoke-AgentMemoryHook
 if ($Uninstall) {
     if (Test-Path $PROFILE) {
         $content = Get-Content $PROFILE -Raw
-        $cleaned = $content -replace '(?ms)## BEGIN: AgentMemorySystem.*?## END: AgentMemorySystem\s*', ''
-        Set-Content $PROFILE -Value $cleaned
+        $cleaned = Remove-AgentMemorySystemContent $content
+        Set-Content $PROFILE -Value $cleaned -Encoding utf8
         Write-Host "OK: AgentMemorySystem removed from profile" -ForegroundColor Green
     }
     return
@@ -162,18 +204,27 @@ if ($GitHookOnly) {
 }
 
 # -- Full install -----------------------------------------------------------
+if (-not (Test-Path (Split-Path $PROFILE -Parent))) {
+    New-Item -ItemType Directory -Path (Split-Path $PROFILE -Parent) -Force | Out-Null
+}
+
 if (-not (Test-Path $PROFILE)) {
     New-Item -ItemType File -Path $PROFILE -Force | Out-Null
 }
 
 $existing = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
+$cleaned  = Remove-AgentMemorySystemContent $existing
+$updated  = if ([string]::IsNullOrWhiteSpace($cleaned)) {
+    $profileBlock.Trim() + [Environment]::NewLine
+} else {
+    $cleaned.TrimEnd() + [Environment]::NewLine + [Environment]::NewLine + $profileBlock.Trim() + [Environment]::NewLine
+}
 
 if ($existing -and $existing.Contains("## BEGIN: AgentMemorySystem")) {
-    $updated = $existing -replace '(?ms)## BEGIN: AgentMemorySystem.*?## END: AgentMemorySystem', $profileBlock.Trim()
-    Set-Content $PROFILE -Value $updated
-    Write-Host "OK: AgentMemorySystem updated in profile" -ForegroundColor Cyan
+    Set-Content $PROFILE -Value $updated -Encoding utf8
+    Write-Host "OK: AgentMemorySystem refreshed in profile" -ForegroundColor Cyan
 } else {
-    Add-Content -Path $PROFILE -Value $profileBlock
+    Set-Content $PROFILE -Value $updated -Encoding utf8
     Write-Host "" 
     Write-Host "Agent Memory System - Installed!" -ForegroundColor Cyan
 }
@@ -185,6 +236,12 @@ $hooksDir = Join-Path $ScriptDir "hooks"
 New-Item -ItemType Directory -Path $hooksDir -Force | Out-Null
 python $CompPy bash 2>$null | Set-Content (Join-Path $hooksDir "bash_completions.sh") -Encoding utf8 -ErrorAction SilentlyContinue
 python $CompPy zsh  2>$null | Set-Content (Join-Path $hooksDir "zsh_completions.zsh")  -Encoding utf8 -ErrorAction SilentlyContinue
+
+if (Test-Path $SyncPy) {
+    Write-Host ""
+    Write-Host "  Syncing workspace editor integrations..." -ForegroundColor Cyan
+    python $SyncPy --root $WorkspaceRoot
+}
 
 Write-Host ""
 Write-Host "  Profile : $PROFILE"

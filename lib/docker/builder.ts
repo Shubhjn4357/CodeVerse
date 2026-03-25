@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import Docker from 'dockerode';
-import tar from 'tar-fs';
+import * as tar from 'tar-fs';
 
 const docker = new Docker();
 
@@ -35,7 +35,9 @@ function parseBasicNix(nixContent: string): CodeverseConfig {
         // Add unique
         const split = pkgName.split(' ');
         for (const p of split) {
-            if (!config.packages!.apt!.includes(p)) config.packages!.apt!.push(p);
+            if (!config.packages?.apt?.includes(p)) {
+                config.packages?.apt?.push(p);
+            }
         }
     }
 
@@ -46,7 +48,7 @@ function parseBasicNix(nixContent: string): CodeverseConfig {
         for (const line of envLines) {
             const kvMatch = line.trim().match(/([a-zA-Z0-9_]+)\s*=\s*['"]?([^'";]+)['"]?\s*;/);
             if (kvMatch) {
-                config.env![kvMatch[1]] = kvMatch[2];
+                if (config.env) config.env[kvMatch[1]] = kvMatch[2];
             }
         }
     }
@@ -149,8 +151,8 @@ export async function buildWorkspaceImage(
             if (!stream) return reject(new Error("No stream returned from Docker build"));
 
             docker.modem.followProgress(stream,
-                (err: Error | null, res: unknown[]) => {
-                    if (err) return reject(err);
+                (err2: Error | null) => {
+                    if (err2) return reject(err2);
                     onLog(`Image ${imageName} built successfully.`);
                     resolve({ imageName, config });
                 },

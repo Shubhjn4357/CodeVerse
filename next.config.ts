@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["dockerode", "ssh2"],
   async rewrites() {
     return [
       // Example Dynamic Docker proxy route for code-server wrappers

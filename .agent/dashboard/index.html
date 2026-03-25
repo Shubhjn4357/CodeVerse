@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>🧠 Agent Memory Dashboard</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
     :root {
       --bg: #0a0e1a;
       --surface: #111827;
@@ -470,6 +468,7 @@
     .hero-meta { font-size: 13px; color: var(--text-dim); margin-top: 8px; display: flex; gap: 20px; flex-wrap: wrap; }
     .hero-meta strong { color: var(--text); }
   </style>
+  <link rel="stylesheet" href="./workverse.css" />
 </head>
 <body>
 <div class="container">
@@ -493,6 +492,7 @@
   <!-- Tabs -->
   <nav id="tabs">
     <button class="tab active" onclick="showPanel('overview')" id="tab-overview">📊 Overview</button>
+    <button class="tab" onclick="showPanel('workverse')" id="tab-workverse">Workverse</button>
     <button class="tab" onclick="showPanel('tasks')" id="tab-tasks">📋 Tasks</button>
     <button class="tab" onclick="showPanel('checkpoints')" id="tab-checkpoints">💾 Checkpoints</button>
     <button class="tab" onclick="showPanel('usage')" id="tab-usage">⚡ Token Usage</button>
@@ -555,6 +555,93 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- WORKVERSE PANEL -->
+    <div class="panel" id="panel-workverse">
+      <section class="workverse-shell">
+        <div class="workverse-hero card">
+          <div class="workverse-hero-copy">
+            <div class="workverse-kicker">Offline 3D labor simulation</div>
+            <h2>BIT Workverse</h2>
+            <p>
+              Autonomous crews scout real-world contracts, interpret the brief,
+              run conference debates, prototype field fixes, clear approvals,
+              and earn BIT without any network dependency.
+            </p>
+          </div>
+          <div class="workverse-metric-grid">
+            <div class="workverse-metric">
+              <span>Team Bank</span>
+              <strong id="workverse-bank">0 BIT</strong>
+            </div>
+            <div class="workverse-metric">
+              <span>Minted Today</span>
+              <strong id="workverse-minted">0 BIT</strong>
+            </div>
+            <div class="workverse-metric">
+              <span>Live Contracts</span>
+              <strong id="workverse-contracts">0</strong>
+            </div>
+            <div class="workverse-metric">
+              <span>Flow Velocity</span>
+              <strong id="workverse-velocity">0.0 BIT/min</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="workverse-grid">
+          <div class="card workverse-stage-card">
+            <div class="workverse-toolbar">
+              <button class="btn btn-primary" id="workverse-toggle">Pause Flow</button>
+              <button class="btn" id="workverse-contract-btn">New Contract</button>
+              <button class="btn" id="workverse-conference-btn">Run Conference</button>
+              <button class="btn" id="workverse-focus-btn">Focus Agent</button>
+            </div>
+            <div class="workverse-canvas-wrap">
+              <canvas id="workverse-canvas" width="1280" height="720"></canvas>
+              <div class="workverse-overlay">
+                <div class="workverse-overlay-card">
+                  <div class="workverse-overlay-label">Focused Agent</div>
+                  <div class="workverse-overlay-value" id="workverse-focus-name">Initializing</div>
+                  <p id="workverse-focus-thought">Building the offline crew simulation.</p>
+                </div>
+                <div class="workverse-overlay-card">
+                  <div class="workverse-overlay-label">Current Flow</div>
+                  <div class="workverse-overlay-value" id="workverse-stage-name">Signal Scan</div>
+                  <p id="workverse-stage-caption">Incoming demand is being routed into active jobs.</p>
+                </div>
+              </div>
+            </div>
+            <div class="workverse-hints">
+              <span>Space pause</span>
+              <span>N new contract</span>
+              <span>C force conference</span>
+              <span>F fullscreen</span>
+              <span>&larr; &rarr; orbit camera</span>
+            </div>
+          </div>
+
+          <div class="workverse-sidebar">
+            <div class="card">
+              <div class="section-header">Crew Ledger <span id="workverse-agent-count"></span></div>
+              <div id="workverse-agent-list" class="workverse-list"></div>
+            </div>
+            <div class="card">
+              <div class="section-header">Contract Flow <span id="workverse-job-count"></span></div>
+              <div id="workverse-job-list" class="workverse-list"></div>
+            </div>
+            <div class="card">
+              <div class="section-header">Conference Feed <span id="workverse-feed-count"></span></div>
+              <div id="workverse-feed" class="workverse-feed"></div>
+            </div>
+            <div class="card">
+              <div class="section-header">Inspector</div>
+              <div id="workverse-inspector" class="workverse-inspector"></div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
 
     <!-- TASKS PANEL -->
@@ -649,6 +736,7 @@
   </main>
 </div>
 
+<script src="./workverse.js"></script>
 <script>
 // ─────────────────────────────────────────────
 // Data loading — reads JSON files relative to dashboard/
@@ -687,6 +775,7 @@ async function loadData() {
 function renderAll() {
   renderSession();
   renderOverview();
+  window.WorkverseDashboard?.setMemoryData({ store: STORE, usage: USAGE, session: SESSION });
   renderTasks();
   renderCheckpoints();
   renderUsage();
@@ -974,6 +1063,7 @@ function showPanel(id) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.getElementById('panel-' + id).classList.add('active');
   document.getElementById('tab-' + id).classList.add('active');
+  window.WorkverseDashboard?.onPanelChange(id);
 }
 
 function fmtTokens(n) {
@@ -997,6 +1087,7 @@ function emptyHTML(msg, cmd = '') {
 // ─────────────────────────────────────────────
 // Init
 // ─────────────────────────────────────────────
+window.WorkverseDashboard?.initialize();
 loadData();
 // Auto-refresh every 5 seconds
 setInterval(loadData, 5000);

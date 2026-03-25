@@ -18,6 +18,8 @@ import json
 import sys
 from pathlib import Path
 
+from agent_registry import get_known_agents, merge_agent_names
+
 # ---------------------------------------------------------------------------
 # Dynamic data — reads from actual workspace usage files
 # ---------------------------------------------------------------------------
@@ -47,6 +49,11 @@ def get_live_agents() -> list[str]:
         return [a for a in agents if a]
     except Exception:
         return []
+
+
+def get_available_agents() -> list[str]:
+    """Return known agent ids plus anything already logged in the workspace."""
+    return merge_agent_names(get_known_agents(), get_live_agents())
 
 
 def get_live_models() -> list[str]:
@@ -99,7 +106,7 @@ MEM_FLAGS_BY_CMD: dict[str, list[str]] = {
 # ---------------------------------------------------------------------------
 
 def powershell_completion() -> str:
-    agents = get_live_agents()
+    agents = get_available_agents()
     models = get_known_models()    # broader: known pricing config
     cmds   = " ".join(f'"{c}"' for c in MEM_COMMANDS)
     ag_str = " ".join(f'"{a}"' for a in agents)
@@ -155,7 +162,7 @@ Register-ArgumentCompleter -Native -CommandName @('mem','mem-ctx','mem-write','m
 # ---------------------------------------------------------------------------
 
 def bash_completion() -> str:
-    agents = " ".join(get_live_agents())
+    agents = " ".join(get_available_agents())
     models = " ".join(get_known_models())
     cmds   = " ".join(MEM_COMMANDS)
 
@@ -196,7 +203,7 @@ complete -F _mem_completions mem
 # ---------------------------------------------------------------------------
 
 def zsh_completion() -> str:
-    agents = " ".join(get_live_agents())
+    agents = " ".join(get_available_agents())
     models = " ".join(get_known_models())
     cmds   = " ".join(MEM_COMMANDS)
 
@@ -237,9 +244,9 @@ compdef _mem_complete mem
 
 def main() -> None:
     if "--list" in sys.argv:
-        agents = get_live_agents()
+        agents = get_available_agents()
         models = get_known_models()
-        print(f"  Workspace agents ({len(agents)}): {', '.join(agents) or 'none yet'}")
+        print(f"  Available agents ({len(agents)}): {', '.join(agents) or 'none yet'}")
         print(f"  Known models    ({len(models)}): {', '.join(models) or 'none yet'}")
         print(f"  Active models   : {', '.join(get_live_models()) or 'none yet'}")
         return

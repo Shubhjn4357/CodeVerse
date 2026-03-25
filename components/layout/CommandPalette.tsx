@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Search, X, ArrowRight } from "lucide-react";
+import { motion } from "framer-motion";
+import { Search, ArrowRight } from "lucide-react";
 import { useAppStore } from "@/store/editor";
 
 interface Command {
@@ -95,7 +95,7 @@ export default function CommandPalette({ onClose, onOpenFile }: CommandPalettePr
                 </div>
                 <div className="command-results">
                     {filtered.length === 0 ? (
-                        <div className="p-6 text-center text-(--text-muted) text-sm">No commands found for "{query}"</div>
+                        <div className="p-6 text-center text-(--text-muted) text-sm">No commands found for &quot;{query}&quot;</div>
                     ) : (
                         filtered.map((cmd, i) => (
                             <button

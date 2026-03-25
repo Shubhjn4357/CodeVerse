@@ -63,6 +63,7 @@ sys.path.insert(0, str(_SCRIPTS))
 import memory_engine as _me
 import usage_tracker as _ut
 import context_optimizer as _co
+from agent_registry import normalize_agent_name
 from activate import print_status, init_session, read_session, read_store
 
 
@@ -109,16 +110,16 @@ def detect_agent() -> str:
 
     # 1. Explicit override wins
     if "MEM_AGENT" in env:
-        return env["MEM_AGENT"]
+        return normalize_agent_name(env["MEM_AGENT"])
 
     # 2. Check known IDE env vars
     for var, name in _IDE_MAP.items():
         if var in env:
             if name:
-                return name
+                return normalize_agent_name(name)
             if var == "TERM_PROGRAM":
                 tp = env.get("TERM_PROGRAM", "").lower()
-                return _TERMINAL_PROGRAM_MAP.get(tp, "terminal")
+                return normalize_agent_name(_TERMINAL_PROGRAM_MAP.get(tp, "terminal"))
 
     # 3. Check parent process name on Windows
     if platform.system() == "Windows":
@@ -129,22 +130,22 @@ def detect_agent() -> str:
                 text=True, stderr=subprocess.DEVNULL
             ).strip().split("\n")
             name = out[-1].strip().lower()
-            if "code"    in name: return "vscode-copilot"
-            if "idea"    in name: return "jetbrains-ai"
-            if "pycharm" in name: return "jetbrains-ai"
-            if "zed"     in name: return "zed-ai"
-            if "sublime" in name: return "sublime"
-            if "cursor"  in name: return "cursor"
-            if "warp"    in name: return "warp"
+            if "code"    in name: return normalize_agent_name("vscode-copilot")
+            if "idea"    in name: return normalize_agent_name("jetbrains-ai")
+            if "pycharm" in name: return normalize_agent_name("jetbrains-ai")
+            if "zed"     in name: return normalize_agent_name("zed-ai")
+            if "sublime" in name: return normalize_agent_name("sublime")
+            if "cursor"  in name: return normalize_agent_name("cursor")
+            if "warp"    in name: return normalize_agent_name("warp")
         except Exception:
             pass
 
     # 4. Fallback: active session agent
     session = _me._load_json(_me.SESSION_PATH)
     if session.get("active_agent"):
-        return session["active_agent"]
+        return normalize_agent_name(session["active_agent"])
 
-    return "terminal"
+    return normalize_agent_name("terminal")
 
 
 def detect_model(agent: str) -> str:
@@ -153,6 +154,7 @@ def detect_model(agent: str) -> str:
     Reads from usage-tracker.json — fully dynamic, no hardcoded map.
     Falls back to 'default' if no history exists.
     """
+    agent = normalize_agent_name(agent)
     try:
         usage_path = _find_agent_dir() / "memory" / "usage-tracker.json"
         if not usage_path.exists():
@@ -196,7 +198,7 @@ def cmd_init(_args: list[str]) -> None:
 
 def cmd_ctx(args: list[str]) -> None:
     """Get context blob for agent (auto-detect or --agent <name>)."""
-    agent = _parse_flag(args, "--agent") or detect_agent()
+    agent = normalize_agent_name(_parse_flag(args, "--agent")) or detect_agent()
     try:
         max_tokens = int(_parse_flag(args, "--max-tokens") or "4000")
     except ValueError:
@@ -209,7 +211,7 @@ def cmd_write(args: list[str]) -> None:
     mem write "Task title" [--desc "..."] [--status in_progress] [--tags a,b] [--id existing_id]
     """
     title      = _positional(args, 0, "Untitled Task")
-    agent      = _parse_flag(args, "--agent") or detect_agent()
+    agent      = normalize_agent_name(_parse_flag(args, "--agent")) or detect_agent()
     description = _parse_flag(args, "--desc") or _parse_flag(args, "--description") or ""
     status     = _parse_flag(args, "--status") or "in_progress"
     task_id    = _parse_flag(args, "--id") or _parse_flag(args, "--task-id")
@@ -230,7 +232,7 @@ def cmd_cp(args: list[str]) -> None:
     """
     task_id = _positional(args, 0)
     summary = _positional(args, 1, "Checkpoint")
-    agent   = _parse_flag(args, "--agent") or detect_agent()
+    agent   = normalize_agent_name(_parse_flag(args, "--agent")) or detect_agent()
     context = _parse_flag(args, "--context") or ""
 
     if not task_id:
@@ -256,7 +258,7 @@ def cmd_log(args: list[str]) -> None:
     except ValueError:
         print("ERROR: mem log <input_tokens> <output_tokens>", file=sys.stderr); sys.exit(1)
 
-    agent   = _parse_flag(args, "--agent") or detect_agent()
+    agent   = normalize_agent_name(_parse_flag(args, "--agent")) or detect_agent()
     model   = _parse_flag(args, "--model") or detect_model(agent)
     task_id = _parse_flag(args, "--task-id") or _active_task_id()
     note    = _parse_flag(args, "--note") or ""

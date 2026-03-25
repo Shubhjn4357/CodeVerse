@@ -75,7 +75,10 @@ export async function getUsageReport() {
     try {
         const raw = await fs.readFile(USAGE_FILE, 'utf-8');
         return JSON.parse(raw);
-    } catch (err) {
+    } catch (err:unknown) {
+        if (err instanceof Error) {
+            console.error("Failed to get usage report:", err.message);
+        }
         return { sessions: [], totals: {} };
     }
 }

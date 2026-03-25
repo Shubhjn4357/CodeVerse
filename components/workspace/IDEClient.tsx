@@ -6,12 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { Toaster, toast } from "sonner";
 import { VSCodeFrame } from "@/components/workspace/VSCodeFrame";
 import Link from "next/link";
-import type { Session } from "next-auth";
 
 // Dynamic Dashboard import
 const Dashboard = dynamic(() => import("@/components/dashboard/Dashboard"), { ssr: false });
 
-export default function IDEClient({ session }: { session: Session }) {
+export default function IDEClient() {
   const searchParams = useSearchParams();
   const workspaceParam = searchParams?.get("workspace");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -20,6 +19,7 @@ export default function IDEClient({ session }: { session: Session }) {
   // Apply theme globally
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
+    return () => setTheme("dark");
   }, [theme]);
 
   // If no specific workspace is requested, render the Firebase-style Dashboard Control Plane
@@ -65,7 +65,7 @@ export default function IDEClient({ session }: { session: Session }) {
           <Link href="/" className="text-(--accent) font-bold text-sm tracking-wide hover:opacity-80 transition-opacity">
             ⬡ CodeVerse
           </Link>
-          <div className="h-4 w-[1px] bg-(--border) mx-1" />
+          <div className="h-4 w-px bg-(--border) mx-1" />
           <span className="text-xs text-(--text-muted) font-mono">Workspace: {workspaceParam}</span>
         </div>
         <div className="flex items-center gap-2">

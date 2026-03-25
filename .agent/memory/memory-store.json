@@ -3,18 +3,6 @@
   "created_at": "2026-03-02T14:13:49+05:30",
   "tasks": [
     {
-      "id": "6dd703be",
-      "title": "Redesign Architecture to Cloud IDE Orchestrator Spec",
-      "agent": "antigravity",
-      "description": "Implementing the user's specific JSON spec for Turso workspaces table, Dockerode proxy mapping, and NextAuth.",
-      "status": "completed",
-      "tags": [],
-      "created_at": "2026-03-03T10:00:08.034211+05:30",
-      "updated_at": "2026-03-03T10:21:55.603432+05:30",
-      "checkpoints": [],
-      "completion_summary": "Completed Phase 18 Cloud IDE Orchestrator redo. Implemented Turso DB orchestration, Bento-box dashboard, Booting terminal UI, container networking idle sleep checks, and passed strict tsc type checks."
-    },
-    {
       "id": "a3881578",
       "title": "Testing mem CLI aliases",
       "agent": "antigravity",
@@ -54,6 +42,465 @@
     }
   ],
   "checkpoints": [
+    {
+      "id": "9c89073f",
+      "task_id": "Completed the follow-up page-level QA pass on analytics, reports, consents, discharge, communications, blog, staff access, and billing. Cleaned remaining raw inline status colors in billing and wards, kept the responsive shell changes, and re-verified with lint, typecheck, tests, build, plus authenticated browser checks on desktop/mobile routes.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-19T20:11:45.481753+05:30"
+    },
+    {
+      "id": "b0d80435",
+      "task_id": "Reworked the shared dashboard shell for responsive behavior, added a theme-based confirmation dialog provider/hook, replaced all native confirm flows across key management modules, tightened common layout primitives, and verified with browser screenshots plus lint/typecheck/test/build. Next step: continue page-level visual refinement or component token cleanup if requested.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-19T20:02:16.967789+05:30"
+    },
+    {
+      "id": "85f23eb6",
+      "task_id": "Reworked the shared dashboard shell for responsive behavior, added a theme-based confirmation dialog provider/hook, replaced all native confirm flows across key management modules, tightened common layout primitives, and verified with browser screenshots plus lint/typecheck/test/build. Next step: continue page-level visual refinement or component token cleanup if requested.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-19T20:02:08.476666+05:30"
+    },
+    {
+      "id": "876860ba",
+      "task_id": "Completed follow-up shadcn cleanup on analytics, reports, consent, discharge, blog CMS, auth boundary, and public blog pages. Verified with Playwright smoke checks on login/access-denied/blog routes and full lint/typecheck/test/build.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-18T23:43:49.699094+05:30"
+    },
+    {
+      "id": "f6daafbf",
+      "task_id": "Completed stricter shadcn-style cleanup across management screens and shared surfaces. Verified with lint, typecheck, test, and build. Next step: optional screen-by-screen visual QA for remaining domain pages.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-18T23:28:39.936194+05:30"
+    },
+    {
+      "id": "fab075ad",
+      "task_id": "Completed stricter shadcn-style cleanup across management screens and shared surfaces. Verified with lint, typecheck, test, and build. Next step: optional screen-by-screen visual QA for remaining domain pages.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-18T23:28:34.863836+05:30"
+    },
+    {
+      "id": "a51a2d83",
+      "task_id": "Shifted app foundation to shadcn-style neutral/new-york system: rewrote globals, simplified primitives, converted shell/sidebar/topbar/public chrome, and verified lint/typecheck/build.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-18T23:18:04.086394+05:30"
+    },
+    {
+      "id": "a1c771e7",
+      "task_id": "Spawned explorer subagent Hegel and completed repo scan. Confirmed single Next.js app with App Router, domain-organized lib/components, Drizzle/Postgres, Auth.js, offline/PWA flow, broad API surface, and notable risks around env fallbacks, in-memory request guards, inline comms dispatch, and external Figma script injection.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-18T22:20:00.126591+05:30"
+    },
+    {
+      "id": "6729e03d",
+      "task_id": "Spawned explorer subagent Hegel and completed repo scan. Confirmed single Next.js app with App Router, domain-organized lib/components, Drizzle/Postgres, Auth.js, offline/PWA flow, broad API surface, and notable risks around env fallbacks, in-memory request guards, inline comms dispatch, and external Figma script injection.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-18T22:19:31.291756+05:30"
+    },
+    {
+      "id": "2f177278",
+      "task_id": "Explored repo structure, stack, entry points, API/service data flow, offline/PWA, uploads, communications, and risks. Next step: deliver concise engineering summary with cited paths.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-18T22:17:18.617593+05:30"
+    },
+    {
+      "id": "7aad7f1b",
+      "task_id": "Explored repo structure, stack, entry points, API/service data flow, offline/PWA, uploads, communications, and risks. Next step: deliver concise engineering summary with cited paths.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-18T22:16:54.252988+05:30"
+    },
+    {
+      "id": "9db34446",
+      "task_id": "Completed AirLLM dependency/runtime compatibility pass: installed airllm and sentencepiece in venv312, pinned optimum<2 in optional requirements, added runtime-level AirLLM import diagnostics with BetterTransformer shim, model manager now uses real AirLLM importability instead of find_spec, tests expanded, compile+pytest(41)+smoke passed, and live heavy-airllm profile now reports ready with shim active.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T23:17:39.802054+05:30"
+    },
+    {
+      "id": "e98410c1",
+      "task_id": "Completed AirLLM local-first runtime pass: added LOCAL_AIRLLM_MODEL_PATH support, heavy-airllm profile now carries a managed local snapshot path, runtime loader prefers local snapshots over remote hub IDs, readiness/profile status expose optional artifacts, tests added, compile+pytest(40)+smoke passed, and live admin runtime profiles now show heavy-airllm local snapshot metadata.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T23:08:24.856274+05:30"
+    },
+    {
+      "id": "0f275b00",
+      "task_id": "Completed Cloudflare validation pass: added /api/research/cloudflare/validate backed by Browser Rendering /links validation with inline HTML, persisted validation state, surfaced it in research stats/admin UI, expanded smoke and tests, compile+pytest(38)+smoke passed, live validation now returns exact missing env vars instead of opaque not-configured state.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T23:02:32.927004+05:30"
+    },
+    {
+      "id": "78d160c0",
+      "task_id": "Completed HF dataset sync consolidation: added services/hf_dataset_sync.py, routed learn/datasets/startup persistence through it, added admin HF status/validate/sync endpoints and UI controls, added tests, compile+pytest(37)+smoke passed, live validate-remote and sync-now?wait=true succeeded against configured HF dataset repo.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T22:57:08.792348+05:30"
+    },
+    {
+      "id": "c0a6ec22",
+      "task_id": "Completed local vision-memory pass: collector now persists preview bytes/image URLs/metadata into vision feed, retrieval-based /api/feed/vision/generate returns learned preview results, tests expanded, compile+pytest(35)+smoke on :7860 passed. Remaining external blockers are still Cloudflare creds, HF token for dataset sync, and true heavy local multimodal/image generation hardware/runtime limits.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T22:48:12.897463+05:30"
+    },
+    {
+      "id": "fabfa4fe",
+      "task_id": "Implemented real Google sign-in on the Turso backend. Added services/google_auth.py using official google-auth token verification plus a test-mode secret path, wired Turso user upsert in services/turso_db.py, exposed google auth status in api/routes/auth.py, added auth integration coverage, updated env/docs, and verified compileall, pytest 34 passed, and live smoke on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T22:40:42.574532+05:30"
+    },
+    {
+      "id": "bf836e1b",
+      "task_id": "Added real auto runtime selection. runtime_manager now supports LOCAL_CHAT_BACKEND=auto, prefers GGUF when a local artifact plus llama backend are available, exposes resolved_backend/resolved_profile/resolved_config in status, and keeps persisted config separate from resolved runtime state. Added HTTP coverage for auto selecting GGUF, cleaned model artifacts between tests, updated the GGUF probe, docs, and env defaults, and verified 33 passed plus smoke on :7860 after restarting the server.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T22:31:28.816752+05:30"
+    },
+    {
+      "id": "03d1e7c8",
+      "task_id": "Rebuilt the collection subsystem to be local-first: collect.py now uses a configurable local image embedding path, optional remote encoder mirroring, deterministic synthetic collection in test mode, and a new /api/collect/config endpoint. feed.py now has a shared store_vision_data helper, new collection integration tests pass, smoke was updated, the live server on :7860 was restarted, and smoke now passes there too.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T22:10:48.908232+05:30"
+    },
+    {
+      "id": "0f55145a",
+      "task_id": "Removed the last pytest warnings by making the FAISS/vector stack lazy-loaded. api/route now imports VectorDB only inside knowledge initialization, knowledge/rag no longer imports vectordb types eagerly, and verification is green: compileall, pytest 30 passed with no warnings, smoke passed on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T22:02:58.790455+05:30"
+    },
+    {
+      "id": "b9642d82",
+      "task_id": "Replaced FastAPI on_event usage with lifespan-managed startup/shutdown, added explicit start/stop helpers for collect and research background loops, updated upscale request to Pydantic V2 ConfigDict, and verified compileall, pytest (30 passed, 3 third-party warnings), and smoke on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T22:00:34.267996+05:30"
+    },
+    {
+      "id": "9a6efc0f",
+      "task_id": "Fixed legacy research vector classification so manual rebuilds no longer retain old research chunks as non-research. Verified compileall, pytest 30 passed, smoke, and live rebuild on :7860 reduced total vectors from 143 to 76 with retained_chunks=1, confirming stale research vectors were removed.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T21:54:41.652678+05:30"
+    },
+    {
+      "id": "76827f7c",
+      "task_id": "Fixed destructive filtered research index rebuild semantics by always rebuilding from the full current research corpus, moved scraper and processed data under WHISPER_DATA_ROOT, added legacy scraper prune/reset state controls, and verified compileall, pytest 29 passed, smoke, plus live delete-prune-recrawl and full-corpus index rebuild on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T21:51:05.835326+05:30"
+    },
+    {
+      "id": "796ff617",
+      "task_id": "Added research index rebuild support with a vector-resync service, hooked document deletion to index sync, exposed /api/research/index/rebuild, added legacy scraper refresh_existing support for repeated manual crawls, and verified compileall, pytest 26 passed, smoke, plus live repeated legacy recrawl and index rebuild on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T21:46:00.352545+05:30"
+    },
+    {
+      "id": "b11d64b4",
+      "task_id": "Added research lifecycle maintenance controls: filtered document deletion, history cleanup, and Cloudflare quota reset helpers plus admin endpoints and UI buttons. Verified compileall, pytest 24 passed, smoke, and live history deletion/quota reset on :7860; live document delete endpoint responded correctly though the scoped legacy crawl produced no stored documents to remove.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T21:41:04.392410+05:30"
+    },
+    {
+      "id": "54ae7ae4",
+      "task_id": "Added research document browse/export support with a central document store service, admin /api/research/documents and /api/research/documents/export endpoints, admin UI document cards and export action, legacy crawled-document normalization, and verified compileall, pytest 22 passed, smoke, and live browse/export checks on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T21:37:17.170287+05:30"
+    },
+    {
+      "id": "14a07121",
+      "task_id": "Added persisted research source policy with admin GET/PUT endpoints, seed URL filtering, provenance-aware crawled document records, scoped legacy crawler domains, admin UI policy controls, and verified compileall, pytest 20 passed, smoke, plus live policy update/block/restore on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T21:30:47.089517+05:30"
+    },
+    {
+      "id": "8061440b",
+      "task_id": "Added persistent Cloudflare crawl quota tracking and throttling, wired research auto-fallback and forced-provider quota errors, exposed quota status in admin health, added deterministic legacy test-mode fallback, and verified compileall, pytest 19 passed, and live smoke plus research status on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T21:22:40.909467+05:30"
+    },
+    {
+      "id": "f2cc80ff",
+      "task_id": "Added persistent research crawl history storage and summary state, exposed /api/research/history, rendered recent runs in the admin UI, updated docs, and verified pytest 17 passed plus live smoke and research history checks on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T21:12:56.782796+05:30"
+    },
+    {
+      "id": "4bea73a7",
+      "task_id": "Validated the Cloudflare crawl API against official docs, added Cloudflare-first research crawling with free-plan-friendly defaults, exposed Cloudflare status/provider controls in the admin UI, updated docs/env template, added research regression coverage, and re-verified pytest and live smoke on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T21:08:32.455805+05:30"
+    },
+    {
+      "id": "6426c0c6",
+      "task_id": "Replaced Supabase with a Turso-backed libsql adapter and local auth/profile store, added Drizzle schema/config/package toolchain, updated requirements/docs/env template, logged chats/images into database tables, fixed encryption import, redacted password hashes from profile/admin responses, verified npm db:check, pytest 16 passed, smoke passed, and live auth/profile/admin checks passed on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T20:59:56.850560+05:30"
+    },
+    {
+      "id": "d6fb797b",
+      "task_id": "Verified live admin model toggles and subscription plans. Added persistent analytics middleware, daily request/client counters, knowledge indexing metrics, and moved low-level server metrics off /api/admin/analytics to /api/admin/system-analytics. Pytest now passes 13 tests and smoke passes on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T15:47:18.819951+05:30"
+    },
+    {
+      "id": "3c6916b0",
+      "task_id": "Verified live admin model toggles and subscription plans. Added persistent analytics middleware, daily request/client counters, knowledge indexing metrics, and moved low-level server metrics off /api/admin/analytics to /api/admin/system-analytics. Pytest now passes 13 tests and smoke passes on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T15:47:06.831109+05:30"
+    },
+    {
+      "id": "21c0d89f",
+      "task_id": "Replaced fake training/generator admin control with real tracked subprocess jobs, added shared system job management, exposed job status through runtime/admin analytics, added lifecycle tests, and verified live start/status/stop for both training and generator on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T14:14:19.217803+05:30"
+    },
+    {
+      "id": "8bf88125",
+      "task_id": "Fixed Smart Mode provider gating and status reporting, aligned local Smart Mode prompts with main chat, added a local fallback for slow GGUF races, guarded duplicate auto-collection and auto-research startup tasks, added Smart Mode tests, and verified live /api/chat/smart now succeeds on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T14:08:44.306150+05:30"
+    },
+    {
+      "id": "0f9fadb0",
+      "task_id": "Fixed load_data syntax, repaired train.py to use the real local model/training modules, moved persistence to app data root, verified a one-step local training run, and tightened GGUF chat prompting/stopping so the live API now answers concisely. Pytest and full smoke pass on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T13:57:26.762802+05:30"
+    },
+    {
+      "id": "4e22dbbe",
+      "task_id": "GGUF runtime fixed end to end using llama-completion.exe fallback with absolute GGUF paths and no-conversation one-shot flags. Live API on :7860 now serves gguf-coder successfully; pytest and smoke both pass. Next step is optional quality tuning and server-side generation controls, not runtime repair.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T13:47:50.380281+05:30"
+    },
+    {
+      "id": "a99ef16b",
+      "task_id": "GGUF runtime fixed end to end using llama-completion.exe fallback with absolute GGUF paths and no-conversation one-shot flags. Live API on :7860 now serves gguf-coder successfully; pytest and smoke both pass. Next step is optional quality tuning and server-side generation controls, not runtime repair.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T13:47:39.302825+05:30"
+    },
+    {
+      "id": "b418cbe8",
+      "task_id": "Added test mode with stub runtime/image generation, data-root-based dataset paths, pytest coverage for core APIs and dataset upload/download, GGUF auto-detection fallback, and a gguf_runtime_probe script. Verified pytest 6 passed, smoke_api passed on :7860, and llama-cpp install still fails due missing Windows toolchain (no nmake/cl/cmake).",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T12:49:52.417976+05:30"
+    },
+    {
+      "id": "1b6c0c2c",
+      "task_id": "Cleaned the image model catalog, added image model selection to the public chat UI, and expanded scripts/smoke_api.py to verify image generation end to end. Verified /api/image/models returns the cleaned catalog and the full smoke pass succeeds on :7860.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T12:41:21.286073+05:30"
+    },
+    {
+      "id": "772b3030",
+      "task_id": "Added scripts/smoke_api.py for end-to-end health/runtime/admin/chat checks, updated README usage, and cache-busted admin/chat UI assets so browser refreshes pick up new JS/CSS on deploy.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T12:35:50.552839+05:30"
+    },
+    {
+      "id": "163be43b",
+      "task_id": "Added GGUF/runtime readiness diagnostics, richer model download job telemetry, admin UI auto-refresh/status rendering, and fixed token_service import-time redis annotation crash. Verified admin UI on :7860, explicit GGUF failure reporting, and local chat working again on fast-coder.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T10:30:36.061282+05:30"
+    },
+    {
+      "id": "d84a802d",
+      "task_id": "Added runtime profile control plane, model download manager, admin login flow, protected dataset/research mutation endpoints, early dotenv loading, and HF persistence hooks. Verified secure admin login, profile switching, and protected API behavior.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T10:07:08.727594+05:30"
+    },
+    {
+      "id": "a09f9869",
+      "task_id": "Implemented runtime manager wiring, chat/admin UI, dataset/research routes, fixed learn/auth/smart-mode/image bugs, and verified chat/image/admin flows end to end. Next step is production hardening and tiered deployment work.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T09:59:27.609641+05:30"
+    },
+    {
+      "id": "31b67b0a",
+      "task_id": "Completed repo audit. Found core chat model never loads, training/import scripts broken, duplicate learn routes, insecure admin auth, fake/demo provider fallbacks, and non-persistent vision learning. Next: summarize findings, 2026-gap analysis, and AIKosh guidance.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T00:11:41.634764+05:30"
+    },
+    {
+      "id": "39d79226",
+      "task_id": "Completed repo audit. Found core chat model never loads, training/import scripts broken, duplicate learn routes, insecure admin auth, fake/demo provider fallbacks, and non-persistent vision learning. Next: summarize findings, 2026-gap analysis, and AIKosh guidance.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-16T00:11:33.472209+05:30"
+    },
+    {
+      "id": "3002aae5",
+      "task_id": "Updated .env.example to match the real AutoLoop runtime: core app vars, local Valkey/worker settings, Meta/Instagram webhook vars, WhatsApp vars, LinkedIn, optional GitHub/Sentry/HF flags, and removed stale WEBHOOK_URL.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-15T23:47:41.697333+05:30"
+    },
+    {
+      "id": "ff0cf52c",
+      "task_id": "AutoLoop automation stack refactored: lazy Redis/Valkey init, dedicated worker bootstrap, workflow recovery on restart, scheduled social publishing, Meta webhook-based social replies, WhatsApp user scoping, Instagram account callback fix, Hugging Face Valkey startup, and social automation UI/account selection/story mention support. Verified with pnpm type-check, lint with warnings only, and build.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-15T23:42:17.042583+05:30"
+    },
+    {
+      "id": "fab38a2a",
+      "task_id": "AutoLoop automation stack refactored: lazy Redis/Valkey init, dedicated worker bootstrap, workflow recovery on restart, scheduled social publishing, Meta webhook-based social replies, WhatsApp user scoping, IG account callback fix, Hugging Face Valkey startup, and social automation UI/account selection/story mention support. Verified with pnpm type-check, lint (warnings only), and build.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-15T23:42:05.306525+05:30"
+    },
+    {
+      "id": "c194dd96",
+      "task_id": "Scanned AutoLoop runtime, queues, social and WhatsApp automation paths. Key findings: worker bootstrap mismatch, social worker not started, Instagram callback/posting broken, scheduled posts and delay nodes incomplete, WhatsApp is globally scoped. Next: deliver prioritized review and 2026-standard architecture recommendations.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-15T22:51:13.290456+05:30"
+    },
+    {
+      "id": "41a0d3ab",
+      "task_id": "Scanned AutoLoop runtime, queues, social and WhatsApp automation paths. Key findings: worker bootstrap mismatch, social worker not started, Instagram callback/posting broken, scheduled posts and delay nodes incomplete, WhatsApp is globally scoped. Next: deliver prioritized review and 2026-standard architecture recommendations.",
+      "agent": "codex",
+      "summary": "codex",
+      "compressed_context": "",
+      "token_estimate": 1,
+      "created_at": "2026-03-15T22:51:06.379644+05:30"
+    },
     {
       "id": "42d87da5",
       "task_id": "c5239484",

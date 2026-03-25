@@ -37,11 +37,12 @@ export async function POST(req: NextRequest) {
             model,
             system: systemPrompt,
             messages,
-            tools: coreTools as any,
+            tools: coreTools,
         });
 
         return result.toTextStreamResponse();
-    } catch (error: any) {
+    } catch (e: unknown) {
+        const error = e instanceof Error ? e : new Error(String(e));
         return new Response(JSON.stringify({ error: error.message }), { status: 500 });
     }
 }

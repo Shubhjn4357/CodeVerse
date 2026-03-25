@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import {
     Globe, RefreshCw, ChevronLeft, ChevronRight,
-    ExternalLink, Smartphone, Monitor, Maximize2, Layout
+    ExternalLink, Smartphone, Monitor
 } from "lucide-react";
 
 export default function BrowserPanel() {

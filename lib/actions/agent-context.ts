@@ -12,7 +12,7 @@ const WORKSPACE_ROOT = process.cwd();
  *
  * Returns merged context: memory, active tasks, and guidance files.
  */
-export async function loadAgentContext(agentName: string = "codeverse_ui"): Promise<{
+export async function loadAgentContext(): Promise<{
     sessionMemory: string;
     activeTasks: string;
     guidance: string;
@@ -93,9 +93,10 @@ export async function loadAgentContext(agentName: string = "codeverse_ui"): Prom
  * Builds a full system prompt embedding the .agent context for agent inference
  */
 export async function buildAgentSystemPrompt(agentName: string = "codeverse_ui"): Promise<string> {
-    const ctx = await loadAgentContext(agentName);
+    const ctx = await loadAgentContext();
 
     const parts = [
+        `Agent: ${agentName}`,
         "You are CodeVerse, an elite agentic IDE assistant embedded in the workspace.",
         "You have access to the filesystem, git, terminal, browser automation, and search.",
         "",

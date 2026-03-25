@@ -33,6 +33,7 @@ know what task is in progress without the user having to repeat themselves.
 
 **Agent name examples** (use any string — fully dynamic):
 - `antigravity`, `gemini`, `claude`, `codex`, `terminal`, `my_script`, `claude-code`
+- Tiny family aliases are also supported: `claw`, `tiny-claw`, `pico-claw`, `micro-claw`, `nano-claw`, `rtiny-claw`
 
 ---
 

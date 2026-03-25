@@ -7,8 +7,7 @@ import {
     getFileDiff,
     pushBranch,
     pullBranch,
-    checkoutBranch,
-    git
+    checkoutBranch
 } from "@/lib/git";
 
 export async function getGitStatusAction() {
@@ -23,8 +22,8 @@ export async function commitFilesAction(message: string, files: string[] = []) {
     try {
         const res = await commitFiles(message, files);
         return { success: true, commit: res.commit };
-    } catch (e: any) {
-        return { success: false, error: e.message };
+    } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
 }
 
@@ -36,8 +35,8 @@ export async function pushBranchAction() {
     try {
         await pushBranch();
         return { success: true };
-    } catch (e: any) {
-        return { success: false, error: e.message };
+    } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
 }
 
@@ -45,8 +44,8 @@ export async function pullBranchAction() {
     try {
         await pullBranch();
         return { success: true };
-    } catch (e: any) {
-        return { success: false, error: e.message };
+    } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
 }
 
@@ -54,7 +53,7 @@ export async function checkoutBranchAction(branch: string, create: boolean = fal
     try {
         await checkoutBranch(branch, create);
         return { success: true };
-    } catch (e: any) {
-        return { success: false, error: e.message };
+    } catch (e: unknown) {
+        return { success: false, error: e instanceof Error ? e.message : String(e) };
     }
 }

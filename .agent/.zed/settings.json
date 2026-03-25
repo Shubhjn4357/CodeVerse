@@ -1,0 +1,16 @@
+{
+  "tasks": [
+    {
+      "label": "Mem: Status",
+      "command": "python ./scripts/mem.py status"
+    },
+    {
+      "label": "Mem: Load Context",
+      "command": "python ./scripts/mem.py ctx --agent codex"
+    },
+    {
+      "label": "Mem: Init Session",
+      "command": "python ./scripts/mem.py init"
+    }
+  ]
+}

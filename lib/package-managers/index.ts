@@ -1,5 +1,6 @@
 import { execSync, spawn } from "child_process";
 import path from "path";
+import fs from "fs";
 
 export type PackageManager = "npm" | "pnpm" | "bun" | "yarn";
 
@@ -22,7 +23,6 @@ export function detectPackageManagers(): PackageManager[] {
 }
 
 export function preferredPmFromLockfile(cwd: string): PackageManager {
-    const fs = require("fs");
     if (fs.existsSync(path.join(cwd, "bun.lockb"))) return "bun";
     if (fs.existsSync(path.join(cwd, "pnpm-lock.yaml"))) return "pnpm";
     if (fs.existsSync(path.join(cwd, "yarn.lock"))) return "yarn";

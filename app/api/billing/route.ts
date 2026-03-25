@@ -5,7 +5,8 @@ export async function GET() {
     try {
         const report = await getUsageReport();
         return NextResponse.json(report);
-    } catch (error: any) {
+    } catch (e: unknown) {
+        const error = e instanceof Error ? e : new Error(String(e));
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
@@ -20,7 +21,8 @@ export async function POST(req: NextRequest) {
 
         const entry = await logUsage(agent, modelId, inputTokens, outputTokens, taskTitle);
         return NextResponse.json({ success: true, entry });
-    } catch (error: any) {
+    } catch (e: unknown) {
+        const error = e instanceof Error ? e : new Error(String(e));
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

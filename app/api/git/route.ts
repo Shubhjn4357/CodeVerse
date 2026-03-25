@@ -38,7 +38,8 @@ export async function GET(req: NextRequest) {
             default:
                 return NextResponse.json({ error: "Invalid action" }, { status: 400 });
         }
-    } catch (error: any) {
+    } catch (e: unknown) {
+        const error = e instanceof Error ? e : new Error(String(e));
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
@@ -76,7 +77,8 @@ export async function POST(req: NextRequest) {
             default:
                 return NextResponse.json({ error: "Invalid action" }, { status: 400 });
         }
-    } catch (error: any) {
+    } catch (e: unknown) {
+        const error = e instanceof Error ? e : new Error(String(e));
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

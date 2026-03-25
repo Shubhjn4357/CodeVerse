@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState} from "react";
+import { motion } from "framer-motion";
 import {
-    Package, Search, Star, Download, CheckCircle2,
-    ToggleLeft, ToggleRight, RefreshCw, ExternalLink, X
+    Package, Search, Download,
+    ToggleLeft, ToggleRight, RefreshCw
 } from "lucide-react";
 import { BUILTIN_EXTENSIONS } from "@/constants/extensions";
 import { toast } from "sonner";

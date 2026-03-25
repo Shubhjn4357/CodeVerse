@@ -22,12 +22,18 @@ COPY . .
 # Prevent Prisma/Next.js telemetry
 ENV NEXT_TELEMETRY_DISABLED 1
 
+# Increase memory for build
+ENV NODE_OPTIONS=--max-old-space-size=4096
+
 # Generate the standalone Next.js build
 RUN npm run build
 
 # Step 2. Production image, copy all the files and start next
 FROM base AS runner
 WORKDIR /app
+
+# Add libc6-compat to the runner stage as well
+RUN apk add --no-cache libc6-compat
 
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1

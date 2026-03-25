@@ -93,10 +93,10 @@ export async function searchCodebase(
         }
 
         return results;
-    } catch (err: any) {
+    } catch (e: unknown) {
         // rg exits with code 1 when no matches found – that's OK
-        if (err.code === 1) return [];
-        throw err;
+        if ((e as { code?: number }).code === 1) return [];
+        throw e;
     }
 }
 

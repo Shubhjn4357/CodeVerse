@@ -69,6 +69,9 @@ mem watch                        # live polling watcher (3s updates)
 mem agent                        # show auto-detected agent + last model used
 ```
 
+Tiny agent variants are now recognized as first-class ids too:
+`claw`, `tiny-claw`, `pico-claw`, `micro-claw`, `nano-claw`, `rtiny-claw`.
+
 ---
 
 ### Model Management (fully dynamic)
@@ -93,6 +96,7 @@ python .Agent/scripts/shell_completions.py --list
 | IDE / Agent | How to activate | Snippet file |
 |-------------|-----------------|--------------|
 
+| Codex / OpenAI agents | `AGENTS.md` | [CODEX.md](agents/CODEX.md) |
 | Antigravity | Paste into `.gemini/GEMINI.md` | [ANTIGRAVITY.md](agents/ANTIGRAVITY.md) |
 | Claude | Drop as `CLAUDE.md` | [CLAUDE.md](agents/CLAUDE.md) |
 | GitHub Copilot | `.github/copilot-instructions.md` | [COPILOT.md](agents/COPILOT.md) |

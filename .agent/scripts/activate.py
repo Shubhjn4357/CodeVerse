@@ -42,9 +42,10 @@ def find_agent_dir(start: Path | None = None) -> Path | None:
 
 def _import_engine():
     sys.path.insert(0, str(AGENT_DIR / "scripts"))
-    from memory_engine import _load_json, _save_json, SESSION_PATH, STORE_PATH
+    from memory_engine import _load_json, _save_json, SESSION_PATH, STORE_PATH, get_context_for_agent
     from usage_tracker import get_report, get_optimization_tips
-    return _load_json, _save_json, SESSION_PATH, STORE_PATH, get_report, get_optimization_tips
+    from mem import detect_agent
+    return _load_json, _save_json, SESSION_PATH, STORE_PATH, get_report, get_optimization_tips, get_context_for_agent, detect_agent
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +57,7 @@ def _now_iso() -> str:
 
 
 def init_session(workspace: Path) -> dict:
-    _load_json, _save_json, SESSION_PATH, STORE_PATH, _, _ = _import_engine()
+    _load_json, _save_json, SESSION_PATH, STORE_PATH, _, _, _, _ = _import_engine()
 
     session_id = str(uuid.uuid4())[:8]
     session = {
@@ -77,12 +78,12 @@ def init_session(workspace: Path) -> dict:
 
 
 def read_session() -> dict:
-    _load_json, _, SESSION_PATH, STORE_PATH, _, _ = _import_engine()
+    _load_json, _, SESSION_PATH, STORE_PATH, _, _, _, _ = _import_engine()
     return _load_json(SESSION_PATH)
 
 
 def read_store() -> dict:
-    _load_json, _, SESSION_PATH, STORE_PATH, _, _ = _import_engine()
+    _load_json, _, SESSION_PATH, STORE_PATH, _, _, _, _ = _import_engine()
     return _load_json(STORE_PATH)
 
 
@@ -162,6 +163,13 @@ def main() -> None:
     session = init_session(workspace)
     store = read_store()
     print_status(session, store)
+    
+    # Auto-start: show memory context
+    _, _, _, _, _, _, get_context_for_agent, detect_agent = _import_engine()
+    agent = session.get("active_agent") or detect_agent()
+    print("  🚀 Auto-loading memory context...")
+    print(get_context_for_agent(agent))
+    
     print(f"  ✅ New session started: {session['session_id']}")
     print()
 

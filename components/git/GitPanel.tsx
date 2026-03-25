@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
 import {
-    GitBranch, GitCommit, RefreshCw, Check, Clock,
-    Plus, Minus, ArrowUp, ArrowDown, History, CheckCircle2, FileCode2
+    RefreshCw, Check, 
+    Plus, Minus, FileCode2
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -23,12 +22,15 @@ export default function GitPanel() {
     // Mock initial load for UI demonstration
     // Real implementation would hit /api/git
     useEffect(() => {
-        setStatus({
+        function DefaultState(){
+            setStatus({
             staged: [],
             modified: ["app/page.tsx", "components/layout/Sidebar.tsx"],
             untracked: ["components/git/GitPanel.tsx"],
             branch: "main"
         });
+    } 
+    DefaultState();
     }, []);
 
     const refresh = () => {

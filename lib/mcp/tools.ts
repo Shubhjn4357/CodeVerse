@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
+ 
 import { tool } from "ai";
 import { z } from "zod";
 import fs from "fs/promises";

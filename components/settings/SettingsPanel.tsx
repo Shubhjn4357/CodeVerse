@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion } from "framer-motion";
+import { useState} from "react";
 import {
-    Settings, Sun, Moon, Code, Terminal, Palette,
-    Key, GitBranch, Package, Database, Cpu, Save,
-    ChevronRight, ToggleLeft, ToggleRight, Eye, EyeOff
+    Code, Terminal, Palette,
+    Key, GitBranch, Database,Save,
+    ToggleLeft, ToggleRight, Eye, EyeOff, LucideIcon
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,8 +16,13 @@ interface Setting {
     options?: { value: string; label: string }[];
     defaultValue: string | number | boolean;
 }
-
-const SETTINGS_SECTIONS = [
+interface SettingSection {
+    id: string;
+    label: string;
+    icon: LucideIcon;
+    settings: Setting[];
+}
+const SETTINGS_SECTIONS: SettingSection[] = [
     {
         id: "editor",
         label: "Editor",

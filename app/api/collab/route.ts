@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 import * as Y from "yjs";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import * as map from "lib0/map";
+import { IncomingMessage } from "http";
+import { Duplex } from "stream";
 
 // Yjs shared documents keyed by document path
 const docs = new Map<string, { doc: Y.Doc; awareness: awarenessProtocol.Awareness }>();
@@ -19,21 +21,35 @@ const getOrCreateDoc = (docName: string) => {
     });
 };
 
-export async function GET(req: NextRequest, res: any) {
+interface ExtendedServer {
+    yjs_ws?: WebSocketServer;
+    on(event: string, listener: (request: IncomingMessage, socket: Duplex, head: Buffer) => void): this;
+}
+
+interface SocketWithServer {
+    server: ExtendedServer;
+}
+
+interface ResponseWithSocket {
+    socket: SocketWithServer;
+    end(): void;
+}
+
+export async function GET(req: NextRequest, res: ResponseWithSocket) {
     if (!res.socket.server.yjs_ws) {
         wss = new WebSocketServer({ noServer: true });
 
-        res.socket.server.on("upgrade", (request: any, socket: any, head: any) => {
-            const url = new URL(request.url, `ws://localhost`);
+        res.socket.server.on("upgrade", (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+            const url = new URL(request.url ?? "", `ws://localhost`);
             if (url.pathname.startsWith("/api/collab")) {
-                wss?.handleUpgrade(request, socket, head, (ws) => {
+                wss?.handleUpgrade(request, socket, head, (ws: WebSocket) => {
                     wss?.emit("connection", ws, request);
                 });
             }
         });
 
-        wss.on("connection", (conn, req) => {
-            const url = new URL(req.url ?? "", "ws://localhost");
+        wss.on("connection", (conn: WebSocket, request: IncomingMessage) => {
+            const url = new URL(request.url ?? "", "ws://localhost");
             const docName = url.searchParams.get("doc") ?? "default";
             const { doc, awareness } = getOrCreateDoc(docName);
 
@@ -79,7 +95,7 @@ export async function GET(req: NextRequest, res: any) {
                 }
             });
 
-            const updateHandler = (update: Uint8Array, origin: any) => {
+            const updateHandler = (update: Uint8Array, origin: unknown) => {
                 if (origin !== conn) {
                     const encoder = encoding.createEncoder();
                     encoding.writeVarUint(encoder, 0);

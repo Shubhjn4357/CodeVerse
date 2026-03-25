@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { CheckCircle2, CircleDashed, XCircle, AlertCircle, Play, FileCode2, Terminal, Code2 } from "lucide-react";
+import { CheckCircle2, CircleDashed, XCircle, AlertCircle, Play, FileCode2 } from "lucide-react";
 
 export interface PlanStep {
     id: string;

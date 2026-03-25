@@ -1,0 +1,14 @@
+name: Keep-Alive Space
+on:
+  schedule:
+    # Run every 45 minutes
+    - cron: '*/45 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Hugging Face Space
+        run: |
+          curl -I -s https://huggingface.co/spaces/shubhjn/codeverse/api/ping | grep "HTTP"

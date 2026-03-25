@@ -6,11 +6,12 @@ import { useSearchParams } from "next/navigation";
 import { Toaster, toast } from "sonner";
 import { VSCodeFrame } from "@/components/workspace/VSCodeFrame";
 import Link from "next/link";
+import type { Session } from "next-auth";
 
 // Dynamic Dashboard import
 const Dashboard = dynamic(() => import("@/components/dashboard/Dashboard"), { ssr: false });
 
-export default function IDEClient() {
+export default function IDEClient({ session }: { session: Session | null }) {
   const searchParams = useSearchParams();
   const workspaceParam = searchParams?.get("workspace");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -69,6 +70,16 @@ export default function IDEClient() {
           <span className="text-xs text-(--text-muted) font-mono">Workspace: {workspaceParam}</span>
         </div>
         <div className="flex items-center gap-2">
+          {session?.user && (
+            <div className="flex items-center gap-2 mr-2 px-2 py-0.5 bg-(--border) rounded-full border border-(--border-subtle)">
+              <div className="w-4 h-4 rounded-full bg-(--accent) flex items-center justify-center text-[10px] text-white font-bold">
+                {session.user.name?.[0] || session.user.email?.[0] || "?"}
+              </div>
+              <span className="text-[10px] text-(--text-muted) font-medium max-w-[100px] truncate">
+                {session.user.name || session.user.email}
+              </span>
+            </div>
+          )}
           <button
             onClick={handleRebuild}
             className="px-3 py-1 text-xs font-semibold bg-(--border) hover:bg-(--border-subtle) text-(--text) rounded-md transition-colors border border-(--border-subtle) shadow-sm"

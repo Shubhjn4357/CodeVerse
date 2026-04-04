@@ -9,13 +9,26 @@ const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe
 // Native process registry to manage non-docker workspaces (HF Fallback)
 const nativeProcesses = new Map<string, { process: ChildProcess, port: number }>();
 
-async function isDockerAvailable(): Promise<boolean> {
+// Cache for isDockerAvailable result
+let dockerAvailableCache: boolean | null = null;
+
+export async function isDockerAvailable(): Promise<boolean> {
+    if (dockerAvailableCache !== null) return dockerAvailableCache;
     try {
         await docker.ping();
+        dockerAvailableCache = true;
         return true;
     } catch {
+        dockerAvailableCache = false;
         return false;
     }
+}
+
+/**
+ * Gets the internal port for a native workspace process.
+ */
+export function getNativeWorkspacePort(id: string): number | undefined {
+    return nativeProcesses.get(id)?.port;
 }
 
 export interface WorkspaceConfig {

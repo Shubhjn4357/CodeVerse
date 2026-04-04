@@ -14,6 +14,8 @@ import os from "os";
 import { Duplex } from "stream";
 import { existsSync, statSync } from "fs";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
+import { getNativeWorkspacePort } from "./lib/docker/manager";
+import httpProxy from "http-proxy";
 
 const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev });
@@ -28,13 +30,41 @@ const getOrCreateDoc = (docName: string) => {
         return { doc, awareness };
     });
 };
+const proxy = httpProxy.createProxyServer({});
+proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duplex) => {
+    console.error("[Proxy Error]", err.message);
+    if (res instanceof ServerResponse) {
+        res.writeHead(502);
+        res.end("Workspace Proxy Error");
+    }
+});
 
-app.prepare().then(() => {
+console.log(`[BOOT] NODE_ENV: ${process.env.NODE_ENV}, DEV: ${dev}`);
+console.log("[BOOT] Initializing Next.js app.prepare()...");
+
+app.prepare()
+  .then(() => {
+    console.log("[BOOT] Next.js is ready. Configuring middleware and listeners...");
     // Initiate background container cleanup routines
     startAutoSleepCron();
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
         const parsedUrl = parse(req.url!, true);
+        const { pathname } = parsedUrl;
+
+        // Custom Routing for Workspace IDE Proxy
+        if (pathname?.startsWith("/workspace/")) {
+            const parts = pathname.split("/");
+            const workspaceId = parts[2];
+            const port = getNativeWorkspacePort(workspaceId);
+
+            if (port) {
+                // Strip the /workspace/:id prefix when forwarding to code-server
+                req.url = "/" + parts.slice(3).join("/");
+                return proxy.web(req, res, { target: `http://localhost:${port}`, ws: true });
+            }
+        }
+
         handle(req, res, parsedUrl);
     });
 
@@ -45,11 +75,26 @@ app.prepare().then(() => {
     const yjsWss = new WebSocketServer({ noServer: true });
 
     server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-        const { pathname } = parse(req.url || "/", true);
+        const parsedUrl = parse(req.url || "/", true);
+        const { pathname } = parsedUrl;
+
         if (pathname === "/api/collab") {
             yjsWss.handleUpgrade(req, socket, head, (ws) => {
                 yjsWss.emit("connection", ws, req);
             });
+            return;
+        }
+
+        // Proxy Workspace WebSockets (for IDE editor sync)
+        if (pathname?.startsWith("/workspace/")) {
+            const parts = pathname.split("/");
+            const workspaceId = parts[2];
+            const port = getNativeWorkspacePort(workspaceId);
+
+            if (port) {
+                req.url = "/" + parts.slice(3).join("/");
+                return proxy.ws(req, socket, head, { target: `http://localhost:${port}` });
+            }
         }
     });
 
@@ -158,6 +203,7 @@ app.prepare().then(() => {
     server.listen(PORT, () => {
         const pingUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL || process.env.NEXTAUTH_URL || process.env.HF_URL || `http://localhost:${PORT}`;
         console.log(`> Ready on ${pingUrl}`);
+        console.log(`[BOOT] Server is now listening on port ${PORT}`);
         
         // --- Deployment Diagnostics ---
         console.log("[DIAG] Platform Process Info:");

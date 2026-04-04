@@ -1,5 +1,5 @@
 import Docker from "dockerode";
-import { stopWorkspaceContainer } from "../docker/manager";
+import { stopWorkspaceContainer, isDockerAvailable } from "../docker/manager";
 import { db } from "../db";
 
 const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
@@ -8,6 +8,9 @@ const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe
 const networkThresholds = new Map<string, number>();
 
 export async function checkIdleContainers() {
+    if (!(await isDockerAvailable())) {
+        return;
+    }
     console.log("[Auto-Sleep] Running idle container check...");
     try {
         const containers = await docker.listContainers({

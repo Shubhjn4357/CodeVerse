@@ -305,9 +305,19 @@ export default function Dashboard() {
                     {/* Project List */}
                     <div className="flex-1 overflow-y-auto p-2">
                         {loading ? (
-                            <div className="flex flex-col gap-2 p-2">
-                                {[...Array(5)].map((_, i) => (
-                                    <div key={i} className="skeleton h-14 rounded-lg" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-2">
+                                {[...Array(8)].map((_, i) => (
+                                    <div key={i} className="h-[180px] rounded-2xl border border-(--border-subtle) bg-(--surface) relative overflow-hidden animate-pulse">
+                                        <div className="absolute inset-0 bg-linear-to-r from-transparent via-(--accent)/5 to-transparent skeleton-shimmer" />
+                                        <div className="p-5 flex flex-col h-full gap-4">
+                                            <div className="w-10 h-10 rounded-xl bg-(--bg-2)" />
+                                            <div className="space-y-2">
+                                                <div className="h-4 w-3/4 bg-(--bg-2) rounded" />
+                                                <div className="h-3 w-1/2 bg-(--bg-2) rounded" />
+                                            </div>
+                                            <div className="mt-auto h-8 w-1/3 bg-(--bg-2) rounded-lg" />
+                                        </div>
+                                    </div>
                                 ))}
                             </div>
                         ) : filtered.length === 0 ? (
@@ -330,8 +340,9 @@ export default function Dashboard() {
                                         key={project.id}
                                         initial={{ opacity: 0, scale: 0.95 }}
                                         animate={{ opacity: 1, scale: 1 }}
+                                        whileHover={{ y: -4, transition: { duration: 0.2 } }}
                                         onClick={() => openProject(project)}
-                                        className="relative flex flex-col p-5 rounded-2xl border border-(--border-subtle) bg-(--surface) hover:border-(--accent) shadow-sm hover:shadow-md transition-all text-left group cursor-pointer overflow-hidden isolate"
+                                        className="relative flex flex-col p-5 rounded-2xl border border-(--border-subtle) bg-(--surface) hover:border-(--accent) shadow-sm hover:shadow-xl transition-all text-left group cursor-pointer overflow-hidden isolate glass-morphism"
                                     >
                                         <div className="absolute top-0 right-0 w-32 h-32 bg-(--accent) opacity-[0.03] rounded-bl-full -z-10 group-hover:opacity-[0.06] transition-all" />
 

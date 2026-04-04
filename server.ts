@@ -155,6 +155,17 @@ app.prepare().then(() => {
 
     const PORT = process.env.PORT || 7860;
     server.listen(PORT, () => {
-        console.log(`> Ready on http://localhost:${PORT}`);
+        const pingUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL || process.env.NEXTAUTH_URL || process.env.HF_URL || `http://localhost:${PORT}`;
+        console.log(`> Ready on ${pingUrl}`);
+        
+        // Self-ping mechanism every 5 minutes to keep server awake
+        // Using external URL if available to ensure proxy layers register the traffic
+        setInterval(() => {
+            fetch(`${pingUrl}/api/health`)
+                .then(res => res.json())
+                .then(data => console.log(`[Self-Ping] Health check:`, data))
+                .catch(err => console.error(`[Self-Ping] Failed for ${pingUrl}:`, err.message));
+        }, 5 * 60 * 1000);
     });
 });
+

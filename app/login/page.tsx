@@ -24,9 +24,10 @@ export default function LoginPage() {
                         initial={{ scale: 0 }}
                         animate={{ scale: 1 }}
                         transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-                        className="w-20 h-20 bg-gradient-to-br from-(--bg-2) to-(--surface-hover) border border-(--border) rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-inner"
+                        className="w-20 h-20 bg-linear-to-br from-(--bg-2) to-(--surface-hover) border border-(--border) rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-inner relative overflow-hidden"
                     >
-                        <Code2 size={40} className="text-(--accent)" />
+                        <div className="absolute inset-0 bg-linear-to-br from-(--accent)/20 to-transparent opacity-50" />
+                        <Code2 size={40} className="text-(--accent) relative z-10" />
                     </motion.div>
 
                     <h1 className="text-3xl font-bold text-(--text) mb-3 tracking-tight">CodeVerse <span className="text-(--text-muted) font-normal">Studio</span></h1>
@@ -35,7 +36,7 @@ export default function LoginPage() {
                     </p>
 
                     <button
-                        onClick={() => signIn("github", { callbackUrl: "/dashboard" })}
+                        onClick={() => signIn("github", { callbackUrl: "/" })}
                         className="group w-full flex items-center justify-between bg-(--text) text-(--bg) hover:bg-opacity-90 font-semibold py-4 px-6 rounded-2xl transition-all duration-200 shadow-md hover:shadow-lg hover:-translate-y-0.5"
                     >
                         <div className="flex items-center gap-3">

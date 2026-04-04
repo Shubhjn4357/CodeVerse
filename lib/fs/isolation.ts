@@ -1,7 +1,9 @@
 import path from "path";
 import fs from "fs/promises";
+import { existsSync } from "fs";
 
-const WORKSPACE_BASE = path.join(process.cwd(), "workspaces");
+const WORKSPACE_BASE = process.env.WORKSPACE_DIR || 
+                       (existsSync("/data") ? "/data/workspaces" : path.join(process.cwd(), "workspaces"));
 
 /**
  * Returns the root directory for a specific user's workspaces.

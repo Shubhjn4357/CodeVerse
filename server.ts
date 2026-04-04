@@ -12,6 +12,7 @@ import * as map from "lib0/map";
 import * as pty from "node-pty";
 import os from "os";
 import { Duplex } from "stream";
+import { existsSync, statSync } from "fs";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -158,6 +159,22 @@ app.prepare().then(() => {
         const pingUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL || process.env.NEXTAUTH_URL || process.env.HF_URL || `http://localhost:${PORT}`;
         console.log(`> Ready on ${pingUrl}`);
         
+        // --- Deployment Diagnostics ---
+        console.log("[DIAG] Platform Process Info:");
+        console.log(`[DIAG] UID: ${process.getuid?.() ?? 'N/A'}, GID: ${process.getgid?.() ?? 'N/A'}`);
+        try {
+            if (existsSync('/data')) {
+                const stats = statSync('/data');
+                console.log(`[DIAG] /data mount found. Owner: ${stats.uid}, Group: ${stats.gid}, Mode: ${stats.mode.toString(8)}`);
+            } else {
+                console.log("[DIAG] /data mount NOT found.");
+            }
+        } catch (error: unknown) {
+            const msg = error instanceof Error ? error.message : String(error);
+            console.error("[DIAG] Failed to probe /data:", msg);
+        }
+        // ------------------------------
+
         // Self-ping mechanism every 5 minutes to keep server awake
         // Using external URL if available to ensure proxy layers register the traffic
         setInterval(() => {

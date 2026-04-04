@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 7860",
-    "build": "next build && tsc server.ts --esModuleInterop --skipLibCheck --outDir ./dist",
+    "build": "next build && tsc server.ts --esModuleInterop --skipLibCheck --target es2017 --downlevelIteration --moduleResolution node --outDir ./dist",
     "start": "node dist/server.js",
     "lint": "eslint"
   },

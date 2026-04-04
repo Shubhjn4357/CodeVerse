@@ -11,7 +11,14 @@ const WORKSPACE_BASE = process.env.WORKSPACE_DIR ||
  */
 export async function getUserWorkspaceRoot(userId: string): Promise<string> {
     const userRoot = path.join(WORKSPACE_BASE, userId);
-    await fs.mkdir(userRoot, { recursive: true });
+    try {
+        await fs.mkdir(userRoot, { recursive: true });
+    } catch (e: unknown) {
+        if (e && typeof e === 'object' && 'code' in e && e.code === "EACCES") {
+            throw new Error(`Permission Denied: Cannot create ${userRoot}. Ensure your persistent storage is mounted with write access for UID 1000.`);
+        }
+        throw e;
+    }
     return userRoot;
 }
 

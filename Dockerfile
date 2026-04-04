@@ -38,10 +38,12 @@ RUN apk add --no-cache libc6-compat python3 make g++ git
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
-# HF Spaces run with UID 1000
+# HF Spaces run with UID 1000. Ensure /app belongs to 'node' BEFORE switching users.
+# WORKDIR was called as root earlier, so /app is currently root-owned.
+RUN chown -R node:node /app
 USER node
 
-# Copy needed files and re-install production dependencies to ensure native modules work in this Alpine instance
+# Copy needed files and re-install production dependencies
 COPY --from=builder /app/package.json /app/package-lock.json* ./
 RUN npm ci --omit=dev
 

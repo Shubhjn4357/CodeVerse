@@ -31,6 +31,10 @@ export function getNativeWorkspacePort(id: string): number | undefined {
     return nativeProcesses.get(id)?.port;
 }
 
+export function getAndroidPort(id: string): number | undefined {
+    return 6080;
+}
+
 export interface WorkspaceConfig {
     id: string;
     userId: string;

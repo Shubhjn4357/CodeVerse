@@ -6,9 +6,16 @@ const docker = new Docker({
     socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' 
 });
 
+import { isDockerAvailable } from '@/lib/docker/manager';
+
 export async function checkDeviceAvailability(platform: string, workspaceId: string) {
     try {
+        const hasDocker = await isDockerAvailable();
+
         if (platform === "android") {
+            if (!hasDocker) {
+                return { available: false, reason: "Android virtualization requires Docker which is not available in this cloud environment." };
+            }
             const containerName = `codeverse-android-${workspaceId}`;
             const container = docker.getContainer(containerName);
             const info = await container.inspect();
@@ -21,27 +28,26 @@ export async function checkDeviceAvailability(platform: string, workspaceId: str
         }
 
         if (platform === "web") {
-            const containerName = `codeverse-workspace-${workspaceId}`;
-            const container = docker.getContainer(containerName);
-            const info = await container.inspect();
-            
-            if (info.State.Running) {
-                const port = info.NetworkSettings.Ports['8080/tcp']?.[0]?.HostPort;
-                return { available: true, port };
-            }
-            return { available: false, reason: "Workspace container is not running." };
+            // Web Preview is always available via the dynamic proxy in both Docker and Native modes
+            return { available: true };
         }
 
         if (platform === "ios") {
             // iOS usually relies on an external Appetize.io URL stored in config
-            // We'll check if the workspace has it configured
             const { loadWorkspaceConfig } = await import('@/lib/docker/builder');
             const path = await import('path');
-            const dataPath = process.env.DATA_PATH || path.resolve(process.cwd(), 'data/projects', workspaceId);
-            const config = await loadWorkspaceConfig(dataPath);
             
-            if (config.ios?.appetizeUrl) {
-                return { available: true, appetizeUrl: config.ios.appetizeUrl };
+            const userId = "default-user"; // Fallback/Placeholder if not provided
+            // We need to resolve the path correctly based on our data structure
+            const dataPath = process.env.DATA_PATH || path.resolve(process.cwd(), 'workspaces', userId, workspaceId);
+            
+            try {
+                const config = await loadWorkspaceConfig(dataPath);
+                if (config.ios?.appetizeUrl) {
+                    return { available: true, appetizeUrl: config.ios.appetizeUrl };
+                }
+            } catch {
+                // Config missing or error reading it
             }
             return { available: false, reason: "iOS Appetize URL not configured in dev.nix or codeverse.json." };
         }
@@ -51,8 +57,8 @@ export async function checkDeviceAvailability(platform: string, workspaceId: str
         }
 
         return { available: false, reason: "Unknown platform" };
-    } catch (e: unknown) {
-        return { available: false, reason: `System check failed: ${(e as Error).message}` };
+    } catch {
+        return { available: false, reason: "Virtualization is not available in current cloud context." };
     }
 }
 
@@ -67,7 +73,7 @@ export async function requestEmulatorRestart(platform: string, workspaceId: stri
         await container.restart();
         
         return { success: true, message: `${platform} container restarted successfully.` };
-    } catch (e: unknown) {
-        return { success: false, error: (e as Error).message };
+    } catch {
+        return { success: false, error: "Restart failed." };
     }
 }

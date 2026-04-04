@@ -14,7 +14,7 @@ import os from "os";
 import { Duplex } from "stream";
 import { existsSync, statSync } from "fs";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
-import { getNativeWorkspacePort } from "./lib/docker/manager";
+import { getNativeWorkspacePort, getAndroidPort } from "./lib/docker/manager";
 import { initDb } from "./lib/db/schema";
 import httpProxy from "http-proxy";
 
@@ -39,7 +39,7 @@ proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duple
         res.end("Workspace Proxy Error");
     }
 });
-
+l
 console.log(`[BOOT] NODE_ENV: ${process.env.NODE_ENV}, DEV: ${dev}`);
 console.log("[BOOT] Initializing Next.js app.prepare()...");
 
@@ -57,17 +57,32 @@ app.prepare()
         const parsedUrl = parse(req.url!, true);
         const { pathname } = parsedUrl;
 
-        // Custom Routing for Workspace IDE Proxy
+        // 1. Workspace IDE Proxy (/workspace/:id/)
         if (pathname?.startsWith("/workspace/")) {
             const parts = pathname.split("/");
-            const workspaceId = parts[2];
-            const port = getNativeWorkspacePort(workspaceId);
+            const port = getNativeWorkspacePort(parts[2]) || 8080; // Fallback to 8080 for Docker
 
-            if (port) {
-                // Strip the /workspace/:id prefix when forwarding to code-server
-                req.url = "/" + parts.slice(3).join("/");
-                return proxy.web(req, res, { target: `http://localhost:${port}`, ws: true });
-            }
+            // Strip the /workspace/:id prefix when forwarding to code-server
+            req.url = "/" + parts.slice(3).join("/");
+            return proxy.web(req, res, { target: `http://localhost:${port}` });
+        }
+
+        // 2. Android NoVNC Proxy (/android/:id/)
+        if (pathname?.startsWith("/android/")) {
+            const parts = pathname.split("/");
+            const port = getAndroidPort(parts[2]) || 6080;
+            
+            req.url = "/" + parts.slice(3).join("/");
+            return proxy.web(req, res, { target: `http://localhost:${port}` });
+        }
+
+        // 3. User Web Preview Proxy (/preview/:id/)
+        if (pathname?.startsWith("/preview/")) {
+            const parts = pathname.split("/");
+            const port = 3000; // Default user dev server port
+            
+            req.url = "/" + parts.slice(3).join("/");
+            return proxy.web(req, res, { target: `http://localhost:${port}` });
         }
 
         handle(req, res, parsedUrl);
@@ -90,16 +105,19 @@ app.prepare()
             return;
         }
 
-        // Proxy Workspace WebSockets (for IDE editor sync)
+        // Proxy Workspace WebSockets (for IDE editor sync and NoVNC)
         if (pathname?.startsWith("/workspace/")) {
             const parts = pathname.split("/");
-            const workspaceId = parts[2];
-            const port = getNativeWorkspacePort(workspaceId);
+            const port = getNativeWorkspacePort(parts[2]) || 8080;
+            req.url = "/" + parts.slice(3).join("/");
+            return proxy.ws(req, socket, head, { target: `http://localhost:${port}` });
+        }
 
-            if (port) {
-                req.url = "/" + parts.slice(3).join("/");
-                return proxy.ws(req, socket, head, { target: `http://localhost:${port}` });
-            }
+        if (pathname?.startsWith("/android/")) {
+            const parts = pathname.split("/");
+            const port = getAndroidPort(parts[2]) || 6080;
+            req.url = "/" + parts.slice(3).join("/");
+            return proxy.ws(req, socket, head, { target: `http://localhost:${port}` });
         }
     });
 

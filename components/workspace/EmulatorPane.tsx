@@ -25,7 +25,6 @@ interface EmulatorPaneProps {
     onRefresh: () => void;
     onClose: () => void;
     androidPort?: string | null;
-    devServerPort?: string | null;
     appetizeUrl?: string | null;
     workspaceId: string;
 }
@@ -38,7 +37,6 @@ export function EmulatorPane({
     onRefresh, 
     onClose, 
     androidPort, 
-    devServerPort = "3000", 
     appetizeUrl = null,
     workspaceId
 }: EmulatorPaneProps) {
@@ -58,8 +56,8 @@ export function EmulatorPane({
 
     const isLoading = propIsLoading || checking;
 
-    const androidUrl = androidPort ? `http://localhost:${androidPort}/vnc.html?autoconnect=true&resize=scale` : null;
-    const webUrl = `http://localhost:${devServerPort}`;
+    const androidUrl = androidPort ? `/android/${workspaceId}/vnc.html?autoconnect=true&resize=scale` : null;
+    const webUrl = `/preview/${workspaceId}/`;
 
     const renderContent = () => {
         if (isLoading) {
@@ -72,15 +70,14 @@ export function EmulatorPane({
                     <div className="p-4 bg-(--border) rounded-full opacity-20">
                         {platform === 'windows' ? <Monitor size={48} /> : <MonitorSmartphone size={48} />}
                     </div>
-                    <div className="space-y-2">
-                        <h3 className="text-sm font-semibold text-(--text)">Platform Unavailable</h3>
+                    <div className="space-y-4 flex flex-col items-center">
                         <p className="text-xs opacity-70 max-w-[240px] leading-relaxed">
-                            {availability.reason || "This emulator platform is not enabled for your current workspace plan."}
+                            {availability.reason || "This feature requires hardware virtualization (KVM) which is disabled on the current hosting provider."}
                         </p>
+                        <div className="text-[10px] text-(--text-muted) px-3 py-1 bg-(--border)/50 rounded border border-(--border-subtle)">
+                            Native isolation active
+                        </div>
                     </div>
-                    <button className="px-4 py-2 text-xs bg-(--accent) text-white rounded-md hover:opacity-90 transition-all font-medium">
-                        Enable in Settings
-                    </button>
                 </div>
             );
         }

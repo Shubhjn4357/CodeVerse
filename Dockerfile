@@ -38,21 +38,21 @@ RUN apk add --no-cache libc6-compat
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
-RUN addgroup --system --gid 1000 nodejs
-RUN adduser --system --uid 1000 nextjs
+# In Alpine node images, the 'node' user (UID/GID 1000) already exists.
+# We will use it instead of creating a new one to avoid conflicts.
 
 # Set the correct permission for prerender cache and workspaces
 RUN mkdir -p .next workspaces
-RUN chown -R nextjs:nodejs ./
+RUN chown -R node:node ./
 
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-COPY --from=builder --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=node:node /app/.next/standalone ./
+COPY --from=builder --chown=node:node /app/.next/static ./.next/static
+COPY --from=builder --chown=node:node /app/public ./public
 
 # Switch to the non-root user
-USER nextjs
+USER node
 
 EXPOSE 7860
 

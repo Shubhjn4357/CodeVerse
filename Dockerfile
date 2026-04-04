@@ -32,32 +32,32 @@ RUN npm run build
 FROM base AS runner
 WORKDIR /app
 
-# Add libc6-compat to the runner stage as well
-RUN apk add --no-cache libc6-compat
+# Add libc6-compat and other runtimes for native modules (node-pty)
+RUN apk add --no-cache libc6-compat python3 make g++ git
 
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
-# In Alpine node images, the 'node' user (UID/GID 1000) already exists.
-# We will use it instead of creating a new one to avoid conflicts.
+# HF Spaces run with UID 1000
+USER node
 
-# Set the correct permission for prerender cache and workspaces
-RUN mkdir -p .next workspaces
-RUN chown -R node:node ./
+# Copy needed files and re-install production dependencies to ensure native modules work in this Alpine instance
+COPY --from=builder /app/package.json /app/package-lock.json* ./
+RUN npm ci --omit=dev
 
-# Automatically leverage output traces to reduce image size
-# https://nextjs.org/docs/advanced-features/output-file-tracing
-COPY --from=builder --chown=node:node /app/.next/standalone ./
-COPY --from=builder --chown=node:node /app/.next/static ./.next/static
-COPY --from=builder --chown=node:node /app/public ./public
+# Copy build artifacts
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/dist ./dist
 
-# Switch to the non-root user
+# Final permissions check for workspaces
+USER root
+RUN mkdir -p workspaces && chown -R node:node /app
 USER node
 
 EXPOSE 7860
-
 ENV PORT 7860
 ENV HOSTNAME "0.0.0.0"
 
-# Note: server.js is created by next build from the standalone output
-CMD ["node", "server.js"]
+# Start the custom server that integrates Socket.IO and Next.js
+CMD ["node", "dist/server.js"]

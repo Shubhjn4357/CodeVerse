@@ -34,8 +34,12 @@ WORKDIR /app
 
 # Add libc6-compat and other runtimes for native modules (node-pty)
 # Also add code-server for Native Isolation Mode (when Docker is missing)
-RUN apk add --no-cache libc6-compat python3 make g++ git \
-    && npm install -g code-server --unsafe-perm
+# Using standalone release archive for stability over npm install
+RUN apk add --no-cache libc6-compat python3 make g++ git curl ca-certificates \
+    && curl -fL https://github.com/coder/code-server/releases/download/v4.96.2/code-server-4.96.2-linux-amd64.tar.gz \
+    | tar -C /usr/local/lib -xz \
+    && mv /usr/local/lib/code-server-4.96.2-linux-amd64 /usr/local/lib/code-server \
+    && ln -s /usr/local/lib/code-server/bin/code-server /usr/local/bin/code-server
 
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1

@@ -44,6 +44,34 @@ exports.stopWorkspaceContainer = stopWorkspaceContainer;
 const dockerode_1 = __importDefault(require("dockerode"));
 const path_1 = __importDefault(require("path"));
 const child_process_1 = require("child_process");
+const net_1 = __importDefault(require("net"));
+/**
+ * Helper to wait for an internal port to become available
+ */
+async function waitForPort(port, timeoutMs = 30000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        try {
+            await new Promise((resolve, reject) => {
+                const socket = net_1.default.createConnection(port, '127.0.0.1');
+                socket.on('connect', () => {
+                    socket.end();
+                    resolve();
+                });
+                socket.on('error', reject);
+                setTimeout(() => {
+                    socket.destroy();
+                    reject(new Error('timeout'));
+                }, 500);
+            });
+            return true;
+        }
+        catch (_a) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+    }
+    return false;
+}
 // Connect to the local Docker daemon
 const docker = new dockerode_1.default({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
 // Native process registry to manage non-docker workspaces (HF Fallback)
@@ -83,10 +111,8 @@ async function startNativeWorkspace(config) {
         return { success: true, containerId: `native-${id}`, port: String(existing.port) };
     }
     onLog("[SYSTEM] Docker not detected. Entering Native Isolation Mode...");
-    // HF standard: use /app/workspaces or the resolved mount
     const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
     const dataPath = path_1.default.resolve(process.cwd(), 'workspaces', userId, safeName);
-    // Simple port allocation (multi-workspace on HF isn't common but we handle it)
     const port = 8080 + nativeProcesses.size;
     onLog(`[NATIVE] Booting code-server for ${projectName} on port ${port}...`);
     const child = (0, child_process_1.spawn)('code-server', [
@@ -102,8 +128,15 @@ async function startNativeWorkspace(config) {
     child.stdout.on('data', (data) => onLog(`[NATIVE-STDOUT] ${data}`));
     child.stderr.on('data', (data) => onLog(`[NATIVE-STDERR] ${data}`));
     nativeProcesses.set(id, { process: child, port });
-    // Give it a moment to bind
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // Wait for code-server to be ready
+    onLog(`[NATIVE] Waiting for code-server to bind to 127.0.0.1:${port}...`);
+    const ready = await waitForPort(port);
+    if (!ready) {
+        onLog(`[FATAL] code-server failed to bind within timeout.`);
+    }
+    else {
+        onLog(`[READY] code-server is now listening on port ${port}.`);
+    }
     return {
         success: true,
         containerId: `native-${id}`,
@@ -118,7 +151,7 @@ async function startNativeWorkspace(config) {
  * Optionally spins up a sidecar Android emulator container.
  */
 async function startWorkspaceContainer(config) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
     const { id, userId, projectName, withAndroidEmulator = false, onLog = console.log } = config;
     // Check availability first
     if (!await isDockerAvailable()) {
@@ -146,12 +179,9 @@ async function startWorkspaceContainer(config) {
         if (error.statusCode !== 404) {
             throw new Error(`Failed to inspect container: ${error.message}`);
         }
-        // Map the local host path to the workspace
         const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
         const dataPath = process.env.DATA_PATH || path_1.default.resolve(process.cwd(), 'workspaces', userId, safeName);
-        // --- WORKSPACE CONFIG LOGIC AND IMAGE BUILDING ---
         const { buildWorkspaceImage } = await Promise.resolve().then(() => __importStar(require('./builder')));
-        // Let the builder handle parsing and creating the image
         const { imageName, config: codeverseConfig } = await buildWorkspaceImage(id, dataPath, onLog);
         let workspaceSpecificEnv = [];
         if (codeverseConfig.env) {
@@ -160,113 +190,66 @@ async function startWorkspaceContainer(config) {
         if ((_c = codeverseConfig.ios) === null || _c === void 0 ? void 0 : _c.appetizeUrl) {
             appetizeUrl = codeverseConfig.ios.appetizeUrl;
         }
+        onLog(`[DOCKER] Spawning container ${containerName} using image ${imageName}...`);
         const container = await docker.createContainer({
             Image: imageName,
             name: containerName,
             Env: [
-                'AUTH=none',
-                'PASSWORD=codeverse',
-                'SUDO_PASSWORD=codeverse',
-                'TZ=UTC',
+                `PUID=${((_d = process.getuid) === null || _d === void 0 ? void 0 : _d.call(process)) || 1000}`,
+                `PGID=${((_e = process.getgid) === null || _e === void 0 ? void 0 : _e.call(process)) || 1000}`,
+                `TZ=Etc/UTC`,
                 ...workspaceSpecificEnv
             ],
-            Cmd: ['--auth', 'none'],
             HostConfig: {
-                Binds: [
-                    `${dataPath}:/config/workspace`
-                ],
+                Binds: [`${dataPath}:/home/coder/project`],
                 PortBindings: {
-                    '8080/tcp': [{ HostPort: '' }]
+                    '8080/tcp': [{ HostPort: '0' }]
                 },
-                RestartPolicy: {
-                    Name: 'unless-stopped'
-                }
-            },
-            ExposedPorts: {
-                '8080/tcp': {}
+                RestartPolicy: { Name: 'unless-stopped' }
             }
         });
         await container.start();
-        const info = await container.inspect();
-        mainContainerId = container.id;
-        mainPort = (_e = (_d = info.NetworkSettings.Ports['8080/tcp']) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.HostPort;
-        if (!mainPort) {
-            throw new Error("Failed to map port 8080 for Code-Server");
-        }
+        const inspect = await container.inspect();
+        mainContainerId = inspect.Id;
+        mainPort = (_g = (_f = inspect.NetworkSettings.Ports['8080/tcp']) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.HostPort;
     }
-    // --- 2. Optional Android sidecar container ---
+    // --- 2. Android Sidecar Container (Optional) ---
     if (withAndroidEmulator) {
-        const androidImage = 'budtmo/docker-android-x86-11.0';
         try {
-            // 1. Check if it already exists
             const existing = docker.getContainer(androidContainerName);
             const info = await existing.inspect();
             if (!info.State.Running) {
                 await existing.start();
             }
             androidContainerId = info.Id;
-            androidPort = (_g = (_f = info.NetworkSettings.Ports['6080/tcp']) === null || _f === void 0 ? void 0 : _f[0]) === null || _g === void 0 ? void 0 : _g.HostPort;
+            androidPort = ((_j = (_h = info.NetworkSettings.Ports['6080/tcp']) === null || _h === void 0 ? void 0 : _h[0]) === null || _j === void 0 ? void 0 : _j.HostPort) || '6080';
         }
         catch (e) {
             const error = e;
-            if (error.statusCode !== 404) {
-                throw new Error(`Failed to inspect Android container: ${error.message}`);
-            }
-            // Ensure android image exists
-            try {
-                await docker.getImage(androidImage).inspect();
-            }
-            catch (_l) {
-                console.log(`Pulling ${androidImage}... Note: this is a huge image.`);
-                await new Promise((resolve, reject) => {
-                    docker.pull(androidImage, (err, stream) => {
-                        if (err)
-                            return reject(err);
-                        docker.modem.followProgress(stream, (err, res) => err ? reject(err) : resolve(res));
-                    });
-                });
-            }
-            // Start Android container
-            const androidContainer = await docker.createContainer({
-                Image: androidImage,
-                name: androidContainerName,
-                Env: ['EMULATOR_DEVICE=Samsung Galaxy S10', 'WEB_VNC=true'],
-                HostConfig: {
-                    Privileged: true, // Required for KVM usually, though some configs might work without
-                    PortBindings: {
-                        '6080/tcp': [{ HostPort: '' }] // Map noVNC port to dynamic host port
-                    },
-                    RestartPolicy: {
-                        Name: 'unless-stopped'
+            if (error.statusCode === 404) {
+                onLog(`[DOCKER] Spawning Android sidecar ${androidContainerName}...`);
+                const container = await docker.createContainer({
+                    Image: 'shubhjn/codeverse-android:latest',
+                    name: androidContainerName,
+                    HostConfig: {
+                        PortBindings: {
+                            '6080/tcp': [{ HostPort: '0' }]
+                        },
+                        RestartPolicy: { Name: 'unless-stopped' },
+                        Privileged: true
                     }
-                },
-                ExposedPorts: {
-                    '6080/tcp': {}
-                }
-            });
-            await androidContainer.start();
-            const info = await androidContainer.inspect();
-            androidContainerId = androidContainer.id;
-            androidPort = (_j = (_h = info.NetworkSettings.Ports['6080/tcp']) === null || _h === void 0 ? void 0 : _h[0]) === null || _j === void 0 ? void 0 : _j.HostPort;
+                });
+                await container.start();
+                const inspect = await container.inspect();
+                androidContainerId = inspect.Id;
+                androidPort = (_l = (_k = inspect.NetworkSettings.Ports['6080/tcp']) === null || _k === void 0 ? void 0 : _k[0]) === null || _l === void 0 ? void 0 : _l.HostPort;
+            }
         }
     }
-    // However, if the container was ALREADY running (we short-circuited at the top), we need 
-    // to read appetizeUrl manually as well.
-    if (!appetizeUrl) {
-        try {
-            const fs = await Promise.resolve().then(() => __importStar(require('fs/promises')));
-            const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
-            const dataPath = process.env.DATA_PATH || path_1.default.resolve(process.cwd(), 'workspaces', userId, safeName);
-            const configPath = path_1.default.join(dataPath, 'codeverse.json');
-            const configContent = await fs.readFile(configPath, 'utf8');
-            const customConfig = JSON.parse(configContent);
-            if ((_k = customConfig.ios) === null || _k === void 0 ? void 0 : _k.appetizeUrl) {
-                appetizeUrl = customConfig.ios.appetizeUrl;
-            }
-        }
-        catch (_m) {
-            // ignore if missing on running container
-        }
+    // Polling for readiness
+    if (mainPort) {
+        onLog(`[DOCKER] Waiting for code-server to be ready at port ${mainPort}...`);
+        await waitForPort(parseInt(mainPort));
     }
     return {
         success: true,
@@ -277,47 +260,26 @@ async function startWorkspaceContainer(config) {
         appetizeUrl
     };
 }
-/**
- * Stops and optionally removes a workspace container and its sidecars.
- */
-async function stopWorkspaceContainer(id, remove = false) {
-    // Check Native Mode first
+async function stopWorkspaceContainer(id) {
     if (nativeProcesses.has(id)) {
-        const { process: child } = nativeProcesses.get(id);
-        child.kill();
+        const { process } = nativeProcesses.get(id);
+        process.kill();
         nativeProcesses.delete(id);
         return { success: true };
     }
-    const containerName = `codeverse-workspace-${id}`;
-    const androidContainerName = `codeverse-android-${id}`;
-    let errorMsg = "";
     try {
+        const containerName = `codeverse-workspace-${id}`;
         const container = docker.getContainer(containerName);
         await container.stop();
-        if (remove) {
-            await container.remove();
+        try {
+            const androidContainerName = `codeverse-android-${id}`;
+            const androidContainer = docker.getContainer(androidContainerName);
+            await androidContainer.stop();
         }
+        catch (_a) { }
+        return { success: true };
     }
     catch (e) {
-        const error = e;
-        // Ignore 404s
-        if (error.statusCode !== 404)
-            errorMsg += `Workspace stop error: ${error.message}. `;
+        return { success: false, error: e.message };
     }
-    try {
-        const androidContainer = docker.getContainer(androidContainerName);
-        await androidContainer.stop();
-        if (remove) {
-            await androidContainer.remove();
-        }
-    }
-    catch (e) {
-        const error = e;
-        if (error.statusCode !== 404)
-            errorMsg += `Android stop error: ${error.message}. `;
-    }
-    if (errorMsg) {
-        return { success: false, error: errorMsg };
-    }
-    return { success: true };
 }

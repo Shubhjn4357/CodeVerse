@@ -40,6 +40,21 @@ proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duple
     }
 });
 
+proxy.on("proxyRes", (proxyRes, req, res) => {
+    // 1. Rewrite Location redirects to include the path prefix (Fixes redirect loops)
+    const id = req.headers['x-codeverse-id'] as string;
+    const type = req.headers['x-codeverse-type'] as string;
+
+    if (id && type && proxyRes.headers.location) {
+        const originalLocation = proxyRes.headers.location;
+        // Ensure we don't double-prefix if it's already an absolute URL to another domain
+        if (originalLocation.startsWith('/') && !originalLocation.startsWith(`/${type}/${id}`)) {
+            proxyRes.headers.location = `/${type}/${id}${originalLocation}`;
+            console.log(`[PROXY-REWRITE] Redirect ${originalLocation} -> ${proxyRes.headers.location}`);
+        }
+    }
+});
+
 console.log(`[BOOT] NODE_ENV: ${process.env.NODE_ENV}, DEV: ${dev}`);
 console.log("[BOOT] Initializing Next.js app.prepare()...");
 
@@ -60,29 +75,37 @@ app.prepare()
         // 1. Workspace IDE Proxy (/workspace/:id/)
         if (pathname?.startsWith("/workspace/")) {
             const parts = pathname.split("/");
-            const port = getNativeWorkspacePort(parts[2]) || 8080; // Fallback to 8080 for Docker
+            const id = parts[2];
+            const port = getNativeWorkspacePort(id) || 8080;
 
-            // Strip the /workspace/:id prefix when forwarding to code-server
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'workspace';
             req.url = "/" + parts.slice(3).join("/");
-            return proxy.web(req, res, { target: `http://localhost:${port}` });
+            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
 
         // 2. Android NoVNC Proxy (/android/:id/)
         if (pathname?.startsWith("/android/")) {
             const parts = pathname.split("/");
-            const port = getAndroidPort(parts[2]) || 6080;
+            const id = parts[2];
+            const port = getAndroidPort(id) || 6080;
             
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'android';
             req.url = "/" + parts.slice(3).join("/");
-            return proxy.web(req, res, { target: `http://localhost:${port}` });
+            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
 
         // 3. User Web Preview Proxy (/preview/:id/)
         if (pathname?.startsWith("/preview/")) {
             const parts = pathname.split("/");
-            const port = 3000; // Default user dev server port
+            const id = parts[2];
+            const port = 3000;
             
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'preview';
             req.url = "/" + parts.slice(3).join("/");
-            return proxy.web(req, res, { target: `http://localhost:${port}` });
+            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
 
         handle(req, res, parsedUrl);
@@ -110,14 +133,14 @@ app.prepare()
             const parts = pathname.split("/");
             const port = getNativeWorkspacePort(parts[2]) || 8080;
             req.url = "/" + parts.slice(3).join("/");
-            return proxy.ws(req, socket, head, { target: `http://localhost:${port}` });
+            return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
 
         if (pathname?.startsWith("/android/")) {
             const parts = pathname.split("/");
             const port = getAndroidPort(parts[2]) || 6080;
             req.url = "/" + parts.slice(3).join("/");
-            return proxy.ws(req, socket, head, { target: `http://localhost:${port}` });
+            return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
     });
 

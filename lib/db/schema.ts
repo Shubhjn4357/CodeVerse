@@ -94,7 +94,22 @@ CREATE TABLE IF NOT EXISTS chat_history (
 
 export async function initDb() {
   const { db } = await import("./index");
-  // Execute schema creation
-  // In a real production app, use migrations
+  // Execute base schema creation
   await db.executeMultiple(schema);
+
+  // Migration: Ensure android columns exist for workspaces
+  // SQLite doesn't support 'IF NOT EXISTS' for columns, so we try and catch.
+  try {
+    await db.execute("ALTER TABLE workspaces ADD COLUMN android_container_id TEXT;");
+    console.log("[SYSTEM] Database migration: Added android_container_id to workspaces.");
+  } catch {
+    // Column likely already exists
+  }
+
+  try {
+    await db.execute("ALTER TABLE workspaces ADD COLUMN android_port INTEGER;");
+    console.log("[SYSTEM] Database migration: Added android_port to workspaces.");
+  } catch {
+    // Column likely already exists
+  }
 }

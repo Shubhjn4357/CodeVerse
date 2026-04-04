@@ -1,10 +1,27 @@
-# Use Node.js LTS (Alpine for smaller image size)
-FROM node:20-alpine AS base
+# Base image with full glibc support (Bookworm Slim)
+# Alpine (musl) is incompatible with code-server's pre-compiled binaries (fcntl64 symbol error)
+FROM node:20-bookworm-slim AS base
+
+# Install build tools and compatibility layers for native modules (node-pty)
+# Also add code-server for Native Isolation Mode (when Docker is missing)
+RUN apt-get update && apt-get install -y \
+    libc6 \
+    libstdc++6 \
+    python3 \
+    make \
+    g++ \
+    git \
+    curl \
+    ca-certificates \
+    tar \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl -fL https://github.com/coder/code-server/releases/download/v4.96.2/code-server-4.96.2-linux-amd64.tar.gz \
+    | tar -C /usr/local/lib -xz \
+    && mv /usr/local/lib/code-server-4.96.2-linux-amd64 /usr/local/lib/code-server \
+    && ln -s /usr/local/lib/code-server/bin/code-server /usr/local/bin/code-server
 
 # Step 1. Rebuild the source code only when needed
 FROM base AS builder
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat python3 make g++ git
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager
@@ -19,38 +36,29 @@ RUN \
 # Copy source code and build
 COPY . .
 
-# Prevent Prisma/Next.js telemetry
+# Prevent Next.js telemetry
 ENV NEXT_TELEMETRY_DISABLED 1
-
 # Increase memory for build
 ENV NODE_OPTIONS=--max-old-space-size=8192
 
-# Generate the standalone Next.js build
+# Build Next.js and then compile the custom server.ts
 RUN npm run build
 
 # Step 2. Production image, copy all the files and start next
 FROM base AS runner
 WORKDIR /app
 
-# Add libc6-compat and other runtimes for native modules (node-pty)
-# Also add code-server for Native Isolation Mode (when Docker is missing)
-# Using standalone release archive for stability over npm install
-RUN apk add --no-cache libc6-compat python3 make g++ git curl ca-certificates \
-    && curl -fL https://github.com/coder/code-server/releases/download/v4.96.2/code-server-4.96.2-linux-amd64.tar.gz \
-    | tar -C /usr/local/lib -xz \
-    && mv /usr/local/lib/code-server-4.96.2-linux-amd64 /usr/local/lib/code-server \
-    && ln -s /usr/local/lib/code-server/bin/code-server /usr/local/bin/code-server
-
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
 # HF Spaces run with UID 1000. Ensure /app belongs to 'node' BEFORE switching users.
-# WORKDIR was called as root earlier, so /app is currently root-owned.
 RUN chown -R node:node /app
 USER node
 
 # Copy needed files and re-install production dependencies
-COPY --from=builder /app/package.json /app/package-lock.json* ./
+COPY --from=builder /app/package.json /app/package.json
+# If we have a lockfile, use it, otherwise don't fail
+COPY --from=builder /app/package-lock.json* ./
 RUN npm ci --omit=dev
 
 # Copy build artifacts

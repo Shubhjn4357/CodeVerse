@@ -89,7 +89,7 @@ export async function POST(req: Request) {
         } else if (action === "rebuild") {
             const { withAndroidEmulator } = body;
             // 1. Fully destroy existing containers
-            await stopWorkspaceContainer(id, true);
+            await stopWorkspaceContainer(id);
 
             // 2. Recreate them (this will pick up codeverse.json changes)
             const result = await startWorkspaceContainer({ 

@@ -33,7 +33,9 @@ FROM base AS runner
 WORKDIR /app
 
 # Add libc6-compat and other runtimes for native modules (node-pty)
-RUN apk add --no-cache libc6-compat python3 make g++ git
+# Also add code-server for Native Isolation Mode (when Docker is missing)
+RUN apk add --no-cache libc6-compat python3 make g++ git \
+    && npm install -g code-server --unsafe-perm
 
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1

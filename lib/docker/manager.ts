@@ -1,9 +1,22 @@
 import Docker from 'dockerode';
 import path from 'path';
+import { spawn, ChildProcess } from 'child_process';
+import { existsSync } from 'fs';
 
 // Connect to the local Docker daemon
-// This assumes Docker Desktop or Docker Engine is running locally and accessible
 const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
+
+// Native process registry to manage non-docker workspaces (HF Fallback)
+const nativeProcesses = new Map<string, { process: ChildProcess, port: number }>();
+
+async function isDockerAvailable(): Promise<boolean> {
+    try {
+        await docker.ping();
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 export interface WorkspaceConfig {
     id: string;
@@ -15,11 +28,68 @@ export interface WorkspaceConfig {
 }
 
 /**
+ * Native Mode Fallback: Starts code-server as a child process if Docker is missing.
+ */
+async function startNativeWorkspace(config: WorkspaceConfig) {
+    const { id, userId, projectName, onLog = console.log } = config;
+    
+    if (nativeProcesses.has(id)) {
+        const existing = nativeProcesses.get(id)!;
+        return { success: true, containerId: `native-${id}`, port: String(existing.port) };
+    }
+
+    onLog("[SYSTEM] Docker not detected. Entering Native Isolation Mode...");
+    
+    // HF standard: use /app/workspaces or the resolved mount
+    const safeName = projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60);
+    const dataPath = path.resolve(process.cwd(), 'workspaces', userId, safeName);
+    
+    // Simple port allocation (multi-workspace on HF isn't common but we handle it)
+    const port = 8080 + nativeProcesses.size;
+    
+    onLog(`[NATIVE] Booting code-server for ${projectName} on port ${port}...`);
+
+    const child = spawn('code-server', [
+        '--auth', 'none',
+        '--port', String(port),
+        '--disable-telemetry',
+        '--bind-addr', `0.0.0.0:${port}`,
+        dataPath
+    ], {
+        env: { ...process.env, HOME: dataPath },
+        shell: true
+    });
+
+    child.stdout.on('data', (data) => onLog(`[NATIVE-STDOUT] ${data}`));
+    child.stderr.on('data', (data) => onLog(`[NATIVE-STDERR] ${data}`));
+
+    nativeProcesses.set(id, { process: child, port });
+
+    // Give it a moment to bind
+    await new Promise(resolve => setTimeout(resolve, 2000));
+
+    return {
+        success: true,
+        containerId: `native-${id}`,
+        port: String(port),
+        androidContainerId: null,
+        androidPort: null,
+        appetizeUrl: null
+    };
+}
+
+/**
  * Initializes and starts a Dockerized VS Code Code-Server instance for the given workspace ID.
  * Optionally spins up a sidecar Android emulator container.
  */
 export async function startWorkspaceContainer(config: WorkspaceConfig) {
     const { id, userId, projectName, withAndroidEmulator = false, onLog = console.log } = config;
+
+    // Check availability first
+    if (!await isDockerAvailable()) {
+        return startNativeWorkspace(config);
+    }
+
     const containerName = `codeverse-workspace-${id}`;
     const androidContainerName = `codeverse-android-${id}`;
 
@@ -191,6 +261,14 @@ export async function startWorkspaceContainer(config: WorkspaceConfig) {
  * Stops and optionally removes a workspace container and its sidecars.
  */
 export async function stopWorkspaceContainer(id: string, remove = false) {
+    // Check Native Mode first
+    if (nativeProcesses.has(id)) {
+        const { process: child } = nativeProcesses.get(id)!;
+        child.kill();
+        nativeProcesses.delete(id);
+        return { success: true };
+    }
+
     const containerName = `codeverse-workspace-${id}`;
     const androidContainerName = `codeverse-android-${id}`;
 

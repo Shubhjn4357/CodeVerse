@@ -51,25 +51,25 @@ WORKDIR /app
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
 
-# HF Spaces run with UID 1000. Ensure /app belongs to 'node' BEFORE switching users.
+# HF Spaces run with UID 1000. Ensure /app belongs to 'node'
 RUN chown -R node:node /app
+
+# Switch to node user early for security and to allow copying directly as node
 USER node
 
-# Copy needed files and re-install production dependencies
-COPY --from=builder /app/package.json /app/package.json
-# If we have a lockfile, use it, otherwise don't fail
-COPY --from=builder /app/package-lock.json* ./
-RUN npm ci --omit=dev
+# Copy needed files with correct ownership to avoid mass chown later
+# Use --chown=node:node to prevent root ownership of copied files
+COPY --chown=node:node --from=builder /app/package.json ./
+COPY --chown=node:node --from=builder /app/package-lock.json* ./
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy build artifacts
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/dist ./dist
+# Copy build artifacts with correct ownership
+COPY --chown=node:node --from=builder /app/.next ./.next
+COPY --chown=node:node --from=builder /app/public ./public
+COPY --chown=node:node --from=builder /app/dist ./dist
 
-# Final permissions check for workspaces
-USER root
-RUN mkdir -p workspaces && chown -R node:node /app
-USER node
+# Create workspaces directory with user node
+RUN mkdir -p /app/workspaces
 
 EXPOSE 7860
 ENV PORT 7860

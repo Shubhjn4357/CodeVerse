@@ -15,6 +15,7 @@ import { Duplex } from "stream";
 import { existsSync, statSync } from "fs";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
 import { getNativeWorkspacePort } from "./lib/docker/manager";
+import { initDb } from "./lib/db/schema";
 import httpProxy from "http-proxy";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -45,6 +46,10 @@ console.log("[BOOT] Initializing Next.js app.prepare()...");
 app.prepare()
   .then(() => {
     console.log("[BOOT] Next.js is ready. Configuring middleware and listeners...");
+    
+    // Ensure database is up to date
+    initDb().catch(err => console.error("[BOOT] Database init failed:", err));
+
     // Initiate background container cleanup routines
     startAutoSleepCron();
 

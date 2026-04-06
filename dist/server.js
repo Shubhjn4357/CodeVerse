@@ -37,7 +37,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const http_1 = require("http");
-const url_1 = require("url");
 const next_1 = __importDefault(require("next"));
 const socket_io_1 = require("socket.io");
 const ws_1 = require("ws");
@@ -52,11 +51,11 @@ const os_1 = __importDefault(require("os"));
 const auto_sleep_1 = require("./lib/jobs/auto-sleep");
 const manager_1 = require("./lib/docker/manager");
 const schema_1 = require("./lib/db/schema");
+const env_config_1 = require("./lib/env-config");
 const http_proxy_1 = __importDefault(require("http-proxy"));
 const dev = process.env.NODE_ENV !== "production";
 const app = (0, next_1.default)({ dev });
 const handle = app.getRequestHandler();
-// Yjs Doc Management
 const docs = new Map();
 const getOrCreateDoc = (docName) => {
     return map.setIfUndefined(docs, docName, () => {
@@ -65,12 +64,64 @@ const getOrCreateDoc = (docName) => {
         return { doc, awareness };
     });
 };
-const proxy = http_proxy_1.default.createProxyServer({});
-proxy.on("error", (err, _req, res) => {
-    console.error("[Proxy Error]", err.message);
+/**
+ * PRODUCTION PROXY CONFIG (2026 Optimized)
+ */
+const proxy = http_proxy_1.default.createProxyServer({
+    ws: true,
+    xfwd: true,
+    timeout: 30000,
+    proxyTimeout: 30000
+});
+/**
+ * Custom renderer for Proxy Errors and Booting screens.
+ */
+function renderProxyError(res, error, id) {
+    res.writeHead(502, { 'Content-Type': 'text/html' });
+    res.end(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Workspace Connection Failure</title>
+            <style>
+                body { background: #0f1117; color: #e2e8f0; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                .card { background: #1e293b; padding: 2.5rem; border-radius: 1rem; border: 1px solid #334155; text-align: center; max-width: 450px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+                h1 { color: #f87171; font-size: 1.5rem; margin-bottom: 1rem; }
+                p { font-size: 0.875rem; color: #94a3b8; line-height: 1.6; }
+                .id { font-family: monospace; background: #0f172a; padding: 0.4rem 0.6rem; border-radius: 0.4rem; color: #38bdf8; font-size: 0.8rem; }
+                .btn { display: inline-block; background: #38bdf8; color: #0f172a; padding: 0.6rem 1.2rem; border-radius: 0.4rem; text-decoration: none; font-weight: bold; margin-top: 1.5rem; transition: transform 0.2s; }
+                .btn:hover { transform: scale(1.05); }
+                .terminal-link { color: #64748b; font-size: 0.7rem; text-decoration: underline; margin-top: 2rem; display: block; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>Workspace Connection Restricted</h1>
+                <p>Native isolation link for <span class="id">${id}</span> failed.</p>
+                <p style="margin-top: 1rem; text-align: left; padding: 1rem; background: #0f172a; border-radius: 0.5rem; font-size: 0.75rem; color: #64748b;">
+                    <b>Diagnostic:</b> ${error}<br>
+                    <b>Target:</b> Hugging Face Space (Sandboxed)<br>
+                    <b>Status:</b> Use the built-in system terminal to interact with files directly if the core IDE remains unreachable.
+                </p>
+                <a href="/dashboard/booting?id=${id}" class="btn">Auto-Repair & Boot</a>
+                <a href="/dashboard/system" class="terminal-link">Open Direct Terminal</a>
+            </div>
+        </body>
+        </html>
+    `);
+}
+proxy.on("error", (err, req, res) => {
+    const host = req.headers.host || "";
+    const fullUrl = new URL(req.url || "/", `http://${host}`);
+    const pathname = fullUrl.pathname;
+    const headerId = req.headers['x-codeverse-id'];
+    const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
+    const id = headerId || (workspaceHostMatch ? workspaceHostMatch[1] : (pathname.split("/")[2] || "unknown"));
+    console.error(`[Proxy Connection Error] ${err.message} for workspace/${id}`);
     if (res instanceof http_1.ServerResponse) {
-        res.writeHead(502);
-        res.end("Workspace Proxy Error");
+        renderProxyError(res, err.message, id);
     }
 });
 proxy.on("proxyReq", (proxyReq, req) => {
@@ -88,62 +139,76 @@ proxy.on("proxyRes", (proxyRes, req) => {
         const originalLocation = proxyRes.headers.location;
         if (originalLocation.startsWith('/') && !originalLocation.startsWith(`/${type}/${id}`)) {
             proxyRes.headers.location = `/${type}/${id}${originalLocation}`;
-            console.log(`[PROXY-REWRITE] Redirect ${originalLocation} -> ${proxyRes.headers.location}`);
         }
     }
 });
 app.prepare()
     .then(() => {
-    (0, schema_1.initDb)().catch(err => console.error("[BOOT] Database init failed:", err));
+    // Validate Production Environment
+    const envStatus = (0, env_config_1.validateEnvironment)();
+    if (!envStatus.valid) {
+        console.error("[CRITICAL] Infrastructure missing core secrets:", envStatus.missing.join(', '));
+        if (process.env.NODE_ENV === 'production')
+            process.exit(1);
+    }
+    (0, schema_1.initDb)()
+        .then(() => {
+        console.log("[BOOT] Database synchronized.");
+        (0, manager_1.prewarmWorkspace)({ id: 'baseline-warmup', userId: 'system', projectName: 'CodeVerse-Internal' })
+            .catch(err => console.error("[BOOT] Warmup failed:", err));
+    })
+        .catch(err => console.error("[BOOT] Database init failed:", err));
     (0, auto_sleep_1.startAutoSleepCron)();
     const server = (0, http_1.createServer)((req, res) => {
-        const parsedUrl = (0, url_1.parse)(req.url, true);
-        const { pathname } = parsedUrl;
-        const host = req.headers.host || "";
+        const host = req.headers.host || "localhost";
+        const fullUrl = new URL(req.url || "/", `http://${host}`);
+        const { pathname } = fullUrl;
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
-        if (workspaceHostMatch) {
-            const id = workspaceHostMatch[1];
+        const id = workspaceHostMatch ? workspaceHostMatch[1] : ((pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) ? pathname.split("/")[2] : null);
+        if (id) {
+            if (!(0, manager_1.isNativeWorkspaceRunning)(id)) {
+                res.writeHead(302, { Location: `/dashboard/booting?id=${id}` });
+                return res.end();
+            }
             const port = (0, manager_1.getNativeWorkspacePort)(id) || 8080;
             req.headers['x-codeverse-id'] = id;
             req.headers['x-codeverse-type'] = 'workspace';
-            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
-        }
-        if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) {
-            const parts = pathname.split("/");
-            const id = parts[2];
-            const port = (0, manager_1.getNativeWorkspacePort)(id) || 8080;
-            req.headers['x-codeverse-id'] = id;
-            req.headers['x-codeverse-type'] = 'workspace';
-            req.url = "/" + parts.slice(3).join("/");
+            if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) {
+                req.url = "/" + pathname.split("/").slice(3).join("/");
+            }
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
         if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/android/")) {
-            const parts = pathname.split("/");
             const port = (0, manager_1.getAndroidPort)() || 6080;
-            req.headers['x-codeverse-id'] = parts[2];
-            req.headers['x-codeverse-type'] = 'android';
-            req.url = "/" + parts.slice(3).join("/");
+            req.url = "/" + pathname.split("/").slice(3).join("/");
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
-        if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/preview/")) {
-            const parts = pathname.split("/");
-            req.headers['x-codeverse-id'] = parts[2];
-            req.headers['x-codeverse-type'] = 'preview';
-            req.url = "/" + parts.slice(3).join("/");
-            return proxy.web(req, res, { target: `http://127.0.0.1:3000`, changeOrigin: true });
+        if (pathname === "/api/stats") {
+            const stats = {
+                rss: process.memoryUsage().rss,
+                heapUsed: process.memoryUsage().heapUsed,
+                heapTotal: process.memoryUsage().heapTotal,
+                loadAvg: os_1.default.loadavg(),
+                uptime: process.uptime()
+            };
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(stats));
         }
-        handle(req, res, parsedUrl);
+        handle(req, res);
     });
     const io = new socket_io_1.Server(server, { path: "/api/socketio" });
     const yjsWss = new ws_1.WebSocketServer({ noServer: true });
     server.on("upgrade", (req, socket, head) => {
-        const parsedUrl = (0, url_1.parse)(req.url || "/", true);
-        const { pathname } = parsedUrl;
-        const host = req.headers.host || "";
+        const host = req.headers.host || "localhost";
+        const fullUrl = new URL(req.url || "/", `http://${host}`);
+        const { pathname } = fullUrl;
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
-        if (workspaceHostMatch) {
-            const id = workspaceHostMatch[1];
+        const id = workspaceHostMatch ? workspaceHostMatch[1] : ((pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) ? pathname.split("/")[2] : null);
+        if (id && (0, manager_1.isNativeWorkspaceRunning)(id)) {
             const port = (0, manager_1.getNativeWorkspacePort)(id) || 8080;
+            if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) {
+                req.url = "/" + pathname.split("/").slice(3).join("/");
+            }
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
         if (pathname === "/api/collab") {
@@ -152,22 +217,16 @@ app.prepare()
             });
             return;
         }
-        if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) {
-            const parts = pathname.split("/");
-            const port = (0, manager_1.getNativeWorkspacePort)(parts[2]) || 8080;
-            req.url = "/" + parts.slice(3).join("/");
-            return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
-        }
         if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/android/")) {
-            const parts = pathname.split("/");
             const port = (0, manager_1.getAndroidPort)() || 6080;
-            req.url = "/" + parts.slice(3).join("/");
+            req.url = "/" + pathname.split("/").slice(3).join("/");
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
     });
     yjsWss.on("connection", (conn, request) => {
-        const { query } = (0, url_1.parse)(request.url || "/", true);
-        const docName = query.doc || "default";
+        const host = request.headers.host || "localhost";
+        const fullUrl = new URL(request.url || "/", `http://${host}`);
+        const docName = fullUrl.searchParams.get('doc') || "default";
         const { doc, awareness } = getOrCreateDoc(docName);
         conn.binaryType = "arraybuffer";
         const encoder = encoding.createEncoder();
@@ -209,7 +268,7 @@ app.prepare()
     io.on("connection", (socket) => {
         let shell = null;
         socket.on("terminal:start", ({ cols, rows }) => {
-            const shellPath = os_1.default.platform() === "win32" ? "powershell.exe" : process.env.SHELL || "bash";
+            const shellPath = process.env.SHELL || (os_1.default.platform() === "win32" ? "powershell.exe" : "bash");
             shell = pty.spawn(shellPath, [], {
                 name: "xterm-color",
                 cols: cols || 80,

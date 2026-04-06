@@ -112,3 +112,4 @@ const VitalsCard = ({ icon, label, value, subtext, color }: { icon: React.ReactN
         <div className={`absolute -right-4 -bottom-4 w-16 h-16 rounded-full opacity-10 blur-2xl bg-current ${color}`} />
     </div>
 );
+export default DashboardVitals;

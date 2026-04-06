@@ -14,7 +14,7 @@ ENV WORKSPACE_ROOT=/home/node/app/workspaces
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip make g++ git curl ca-certificates tar unzip bzip2 xz-utils procps net-tools iptables \
+    python3 python3-pip make g++ git git-lfs curl ca-certificates tar unzip bzip2 xz-utils procps net-tools iptables \
     xvfb fluxbox novnc websockify libnss3 libatk-bridge2.0-0 libcups2 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
@@ -25,9 +25,11 @@ RUN pip3 install --no-cache-dir "huggingface_hub[cli]"
 RUN curl -fsSL https://code-server.dev/install.sh | sh
 
 # 2. Nix Installation (Optimized for UID 1000)
-# We set up /nix with correct permissions before switching to the node user
 RUN mkdir -p /nix && chown node:node /nix && \
-    mkdir -p /etc/nix && echo "experimental-features = nix-command flakes" > /etc/nix/nix.conf
+    mkdir -p /etc/nix && echo "experimental-features = nix-command flakes" > /etc/nix/nix.conf && \
+    mkdir -p /home/node/.cache && \
+    mkdir -p /home/node/.nix-defexpr/channels && \
+    chown -R node:node /home/node /nix /etc/nix
 
 USER node
 WORKDIR /home/node
@@ -36,11 +38,11 @@ WORKDIR /home/node
 SHELL ["/bin/bash", "-c"]
 
 # Use the Official Nix Installer (Non-interactive & No-daemon)
-# We use a specific version for 2026 stability
-RUN curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
+RUN export XDG_CACHE_HOME=/home/node/.cache && \
+    curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
     . /home/node/.nix-profile/etc/profile.d/nix.sh && \
-    /home/node/.nix-profile/bin/nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
-    /home/node/.nix-profile/bin/nix-channel --update
+    nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
+    nix-channel --update
 
 ENV PATH="/home/node/.nix-profile/bin:/home/node/.nix-profile/sbin:${PATH}"
 ENV NIX_PATH="nixpkgs=/home/node/.nix-defexpr/channels/nixpkgs"

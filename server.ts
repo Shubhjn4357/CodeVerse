@@ -172,6 +172,9 @@ app.prepare()
 
         if (pathname?.startsWith("/android/")) {
             const port = getAndroidPort() || 6080;
+            const id = pathname.split("/")[2] || "android-unified";
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'android';
             req.url = "/" + pathname.split("/").slice(3).join("/");
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
@@ -204,6 +207,8 @@ app.prepare()
 
         if (id && isNativeWorkspaceRunning(id)) {
             const port = getNativeWorkspacePort(id) || 8080;
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'workspace';
             if (pathname?.startsWith("/workspace/")) {
                 req.url = "/" + pathname.split("/").slice(3).join("/");
             }
@@ -219,6 +224,9 @@ app.prepare()
 
         if (pathname?.startsWith("/android/")) {
             const port = getAndroidPort() || 6080;
+            const id = pathname.split("/")[2] || "android-unified";
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'android';
             req.url = "/" + pathname.split("/").slice(3).join("/");
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
@@ -248,7 +256,9 @@ app.prepare()
             if (messageType === 0) {
                 encoding.writeVarUint(encoder, 0);
                 syncProtocol.readSyncMessage(decoder, encoder, doc, null);
-                if (encoding.length(encoder) > 1) conn.send(encoding.toUint8Array(encoder));
+                if (encoding.length(encoder) > 1) {
+                    conn.send(encoding.toUint8Array(encoder));
+                }
             } else if (messageType === 1) {
                 awarenessProtocol.applyAwarenessUpdate(awareness, decoding.readVarUint8Array(decoder), conn);
             }
@@ -268,6 +278,39 @@ app.prepare()
             doc.off("update", updateHandler);
             awarenessProtocol.removeAwarenessStates(awareness, [doc.clientID], null);
         });
+    });
+
+    /**
+     * PROXY GLOBAL LISTENERS
+     */
+    proxy.on("proxyReq", (proxyReq, req: IncomingMessage) => {
+        const id = req.headers['x-codeverse-id'] as string;
+        const type = req.headers['x-codeverse-type'] as string;
+        if (id) proxyReq.setHeader('x-codeverse-id', id);
+        if (type) proxyReq.setHeader('x-codeverse-type', type);
+        
+        const proto = req.headers['x-forwarded-proto'] || 'http';
+        proxyReq.setHeader('X-Forwarded-Proto', proto);
+        const host = req.headers.host;
+        if (host) proxyReq.setHeader('X-Forwarded-Host', host);
+    });
+
+    proxy.on("proxyRes", (proxyRes, req: IncomingMessage) => {
+        const id = req.headers['x-codeverse-id'] as string;
+        const type = req.headers['x-codeverse-type'] as string;
+        const location = proxyRes.headers.location;
+
+        if (location && id && type) {
+            const prefix = type === 'workspace' ? `/workspace/${id}` : '/android';
+            if (location.startsWith("/") && !location.startsWith(prefix)) {
+                proxyRes.headers.location = prefix + location;
+            } else if (location.includes("127.0.0.1") || location.includes("localhost")) {
+                try {
+                    const locUrl = new URL(location);
+                    proxyRes.headers.location = prefix + locUrl.pathname + locUrl.search;
+                } catch {}
+            }
+        }
     });
 
     io.on("connection", (socket) => {

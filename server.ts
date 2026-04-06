@@ -21,7 +21,6 @@ const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
-// Yjs Doc Management
 const docs = new Map<string, { doc: Y.Doc; awareness: awarenessProtocol.Awareness }>();
 const getOrCreateDoc = (docName: string) => {
     return map.setIfUndefined(docs, docName, () => {
@@ -30,7 +29,16 @@ const getOrCreateDoc = (docName: string) => {
         return { doc, awareness };
     });
 };
-const proxy = httpProxy.createProxyServer({});
+
+/**
+ * PRODUCTION PROXY CONFIG (2026 Optimized)
+ */
+const proxy = httpProxy.createProxyServer({
+    ws: true,
+    xfwd: true,
+    timeout: 30000,
+    proxyTimeout: 30000
+});
 
 /**
  * Custom renderer for Proxy Errors and Booting screens.
@@ -75,8 +83,10 @@ function renderProxyError(res: ServerResponse, error: string, id: string) {
 
 proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duplex) => {
     const host = req.headers.host || "";
-    const parsedUrl = parse(req.url || "/", true);
-    const pathname = parsedUrl.pathname || "/";
+    // Modern URL API instead of deprecated url.parse
+    const fullUrl = new URL(req.url || "/", `http://${host}`);
+    const pathname = fullUrl.pathname;
+    
     const headerId = req.headers['x-codeverse-id'] as string;
     const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
     const id = headerId || (workspaceHostMatch ? workspaceHostMatch[1] : (pathname.split("/")[2] || "unknown"));
@@ -114,9 +124,10 @@ app.prepare()
     startAutoSleepCron();
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-        const parsedUrl = parse(req.url!, true);
-        const { pathname } = parsedUrl;
-        const host = req.headers.host || "";
+        // Modern URL API usage
+        const host = req.headers.host || "localhost";
+        const fullUrl = new URL(req.url || "/", `http://${host}`);
+        const { pathname } = fullUrl;
 
         // Unified ID Detection for cold-start redirection
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
@@ -134,7 +145,7 @@ app.prepare()
             req.headers['x-codeverse-id'] = id;
             req.headers['x-codeverse-type'] = 'workspace';
             
-            // Rewrite URL for cleaner IDE interaction if needed
+            // Rewrite URL for cleaner IDE interaction
             if (pathname?.startsWith("/workspace/")) {
                 req.url = "/" + pathname.split("/").slice(3).join("/");
             }
@@ -148,16 +159,17 @@ app.prepare()
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
 
-        handle(req, res, parsedUrl);
+        // Final Next.js handler with modern URL context
+        handle(req, res);
     });
 
     const io = new Server(server, { path: "/api/socketio" });
     const yjsWss = new WebSocketServer({ noServer: true });
 
     server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-        const parsedUrl = parse(req.url || "/", true);
-        const { pathname } = parsedUrl;
-        const host = req.headers.host || "";
+        const host = req.headers.host || "localhost";
+        const fullUrl = new URL(req.url || "/", `http://${host}`);
+        const { pathname, searchParams } = fullUrl;
 
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
         const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);
@@ -185,8 +197,9 @@ app.prepare()
     });
 
     yjsWss.on("connection", (conn: WebSocket, request: IncomingMessage) => {
-        const { query } = parse(request.url || "/", true);
-        const docName = (query.doc as string) || "default";
+        const host = request.headers.host || "localhost";
+        const fullUrl = new URL(request.url || "/", `http://${host}`);
+        const docName = fullUrl.searchParams.get('doc') || "default";
         const { doc, awareness } = getOrCreateDoc(docName);
         conn.binaryType = "arraybuffer";
 

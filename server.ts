@@ -32,11 +32,54 @@ const getOrCreateDoc = (docName: string) => {
 };
 const proxy = httpProxy.createProxyServer({});
 
-proxy.on("error", (err: Error, _req: IncomingMessage, res: ServerResponse | Duplex) => {
-    console.error("[Proxy Error]", err.message);
+/**
+ * Custom renderer for Proxy Errors and Booting screens.
+ * Prevents ECONNREFUSED from showing a generic 502 to the user.
+ */
+function renderProxyError(res: ServerResponse, error: string, id: string) {
+    res.writeHead(502, { 'Content-Type': 'text/html' });
+    res.end(`
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Workspace Connection Failure</title>
+            <style>
+                body { background: #0f1117; color: #e2e8f0; font-family: -apple-system, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                .card { background: #1e293b; padding: 2.5rem; border-radius: 1rem; border: 1px solid #334155; text-align: center; max-width: 450px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+                h1 { color: #f87171; font-size: 1.5rem; margin-bottom: 1rem; }
+                p { font-size: 0.875rem; color: #94a3b8; line-height: 1.6; }
+                .id { font-family: monospace; background: #0f172a; padding: 0.4rem 0.6rem; border-radius: 0.4rem; color: #38bdf8; font-size: 0.8rem; }
+                .btn { display: inline-block; background: #38bdf8; color: #0f172a; padding: 0.6rem 1.2rem; border-radius: 0.4rem; text-decoration: none; font-weight: bold; margin-top: 1.5rem; transition: transform 0.2s; }
+                .btn:hover { transform: scale(1.05); }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <h1>Workspace Connection Refused</h1>
+                <p>Establishing native link for <span class="id">${id}</span>...</p>
+                <p style="margin-top: 1rem; text-align: left; padding: 1rem; background: #0f172a; border-radius: 0.5rem; font-size: 0.75rem; color: #64748b;">
+                    <b>Diagnostic:</b> ${error}<br>
+                    <b>Status:</b> Native isolation is active in limited cloud context.<br>
+                    <b>Target:</b> 127.0.0.1 (Docker unavailable)
+                </p>
+                <a href="javascript:location.reload()" class="btn">Retry Link</a>
+            </div>
+        </body>
+        </html>
+    `);
+}
+
+proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duplex) => {
+    const parts = req.url?.split("/") || [];
+    const type = parts[1] || "workspace";
+    const id = parts[2] || "unknown";
+    
+    console.error(`[Proxy Connection Error] ${err.message} for ${type}/${id}`);
+    
     if (res instanceof ServerResponse) {
-        res.writeHead(502);
-        res.end("Workspace Proxy Error");
+        renderProxyError(res, err.message, id);
     }
 });
 

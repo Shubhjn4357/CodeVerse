@@ -45,8 +45,8 @@ RUN mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools && \
 # 7. CodeVerse Application (Production Build)
 WORKDIR /app
 COPY package*.json ./
-# Use npm ci for faster, deterministic production builds
-RUN npm ci --quiet
+# Upgrade npm to latest for better resolution and switch to 'install' for lockfile sync
+RUN npm install -g npm@11.12.1 && npm install --no-audit --no-fund --quiet
 
 COPY . .
 

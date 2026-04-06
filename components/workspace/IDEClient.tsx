@@ -17,7 +17,7 @@ export default function IDEClient({ session }: { session: Session | null }) {
   const searchParams = useSearchParams();
   const workspaceParam = searchParams?.get("workspace");
   const [isAiOpen, setIsAiOpen] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [theme] = useState<"dark" | "light">("dark");
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Apply theme globally

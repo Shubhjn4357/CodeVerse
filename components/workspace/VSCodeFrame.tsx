@@ -65,7 +65,7 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
             events.removeEventListener("error", handleError);
             events.close();
         };
-    }, [workspaceId, emulator.setIsOpen]);
+    }, [workspaceId, emulator]);
 
     if (status === "loading") {
         return (

@@ -11,6 +11,13 @@ export function isNativeWorkspaceRunning(id: string): boolean {
 }
 
 /**
+ * Checks if Docker is available.
+ */
+export async function isDockerAvailable(): Promise<boolean> {
+    return false; // Mock false to force native fallback logic in restricted cloud environments
+}
+
+/**
  * Stops a native workspace process.
  */
 export async function stopNativeWorkspace(id: string): Promise<boolean> {
@@ -48,6 +55,7 @@ export interface WorkspaceConfig {
     projectName: string;
     image?: string; 
     withAndroidEmulator?: boolean;
+    onLog?: (msg: string) => void;
 }
 
 /**
@@ -58,6 +66,8 @@ export interface WorkspaceOperationResult {
     containerId?: string;
     androidContainerId?: string;
     androidPort?: number;
+    port?: string | number;
+    appetizeUrl?: string;
     error?: string;
 }
 
@@ -66,6 +76,8 @@ export interface WorkspaceOperationResult {
  */
 export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<WorkspaceOperationResult> {
     console.log(`[manager] Mock starting container for ${config.id}...`);
+    if (config.onLog) config.onLog("Initializing Native Runtime Fallback...");
+    
     // In restricted environments, we map this to our internal native process manager
     return {
         success: true,

@@ -49,7 +49,6 @@ const decoding = __importStar(require("lib0/decoding"));
 const map = __importStar(require("lib0/map"));
 const pty = __importStar(require("node-pty"));
 const os_1 = __importDefault(require("os"));
-const fs_1 = require("fs");
 const auto_sleep_1 = require("./lib/jobs/auto-sleep");
 const manager_1 = require("./lib/docker/manager");
 const schema_1 = require("./lib/db/schema");
@@ -67,39 +66,48 @@ const getOrCreateDoc = (docName) => {
     });
 };
 const proxy = http_proxy_1.default.createProxyServer({});
-proxy.on("error", (err, req, res) => {
+proxy.on("error", (err, _req, res) => {
     console.error("[Proxy Error]", err.message);
     if (res instanceof http_1.ServerResponse) {
         res.writeHead(502);
         res.end("Workspace Proxy Error");
     }
 });
-proxy.on("proxyRes", (proxyRes, req, res) => {
-    // 1. Rewrite Location redirects to include the path prefix (Fixes redirect loops)
+proxy.on("proxyReq", (proxyReq, req) => {
+    const id = req.headers['x-codeverse-id'];
+    const type = req.headers['x-codeverse-type'];
+    if (id && type) {
+        proxyReq.setHeader('x-codeverse-id', id);
+        proxyReq.setHeader('x-codeverse-type', type);
+    }
+});
+proxy.on("proxyRes", (proxyRes, req) => {
     const id = req.headers['x-codeverse-id'];
     const type = req.headers['x-codeverse-type'];
     if (id && type && proxyRes.headers.location) {
         const originalLocation = proxyRes.headers.location;
-        // Ensure we don't double-prefix if it's already an absolute URL to another domain
         if (originalLocation.startsWith('/') && !originalLocation.startsWith(`/${type}/${id}`)) {
             proxyRes.headers.location = `/${type}/${id}${originalLocation}`;
             console.log(`[PROXY-REWRITE] Redirect ${originalLocation} -> ${proxyRes.headers.location}`);
         }
     }
 });
-console.log(`[BOOT] NODE_ENV: ${process.env.NODE_ENV}, DEV: ${dev}`);
-console.log("[BOOT] Initializing Next.js app.prepare()...");
 app.prepare()
     .then(() => {
-    console.log("[BOOT] Next.js is ready. Configuring middleware and listeners...");
-    // Ensure database is up to date
     (0, schema_1.initDb)().catch(err => console.error("[BOOT] Database init failed:", err));
-    // Initiate background container cleanup routines
     (0, auto_sleep_1.startAutoSleepCron)();
     const server = (0, http_1.createServer)((req, res) => {
         const parsedUrl = (0, url_1.parse)(req.url, true);
         const { pathname } = parsedUrl;
-        // 1. Workspace IDE Proxy (/workspace/:id/)
+        const host = req.headers.host || "";
+        const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
+        if (workspaceHostMatch) {
+            const id = workspaceHostMatch[1];
+            const port = (0, manager_1.getNativeWorkspacePort)(id) || 8080;
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'workspace';
+            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
+        }
         if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) {
             const parts = pathname.split("/");
             const id = parts[2];
@@ -109,42 +117,41 @@ app.prepare()
             req.url = "/" + parts.slice(3).join("/");
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
-        // 2. Android NoVNC Proxy (/android/:id/)
         if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/android/")) {
             const parts = pathname.split("/");
-            const id = parts[2];
-            const port = (0, manager_1.getAndroidPort)(id) || 6080;
-            req.headers['x-codeverse-id'] = id;
+            const port = (0, manager_1.getAndroidPort)() || 6080;
+            req.headers['x-codeverse-id'] = parts[2];
             req.headers['x-codeverse-type'] = 'android';
             req.url = "/" + parts.slice(3).join("/");
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
-        // 3. User Web Preview Proxy (/preview/:id/)
         if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/preview/")) {
             const parts = pathname.split("/");
-            const id = parts[2];
-            const port = 3000;
-            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-id'] = parts[2];
             req.headers['x-codeverse-type'] = 'preview';
             req.url = "/" + parts.slice(3).join("/");
-            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
+            return proxy.web(req, res, { target: `http://127.0.0.1:3000`, changeOrigin: true });
         }
         handle(req, res, parsedUrl);
     });
-    // 1. Socket.IO for Terminal
     const io = new socket_io_1.Server(server, { path: "/api/socketio" });
-    // 2. ws for Yjs Collaboration
     const yjsWss = new ws_1.WebSocketServer({ noServer: true });
     server.on("upgrade", (req, socket, head) => {
         const parsedUrl = (0, url_1.parse)(req.url || "/", true);
         const { pathname } = parsedUrl;
+        const host = req.headers.host || "";
+        const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
+        if (workspaceHostMatch) {
+            const id = workspaceHostMatch[1];
+            const port = (0, manager_1.getNativeWorkspacePort)(id) || 8080;
+            return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
+        }
         if (pathname === "/api/collab") {
             yjsWss.handleUpgrade(req, socket, head, (ws) => {
                 yjsWss.emit("connection", ws, req);
             });
             return;
         }
-        // Proxy Workspace WebSockets (for IDE editor sync and NoVNC)
         if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) {
             const parts = pathname.split("/");
             const port = (0, manager_1.getNativeWorkspacePort)(parts[2]) || 8080;
@@ -153,7 +160,7 @@ app.prepare()
         }
         if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/android/")) {
             const parts = pathname.split("/");
-            const port = (0, manager_1.getAndroidPort)(parts[2]) || 6080;
+            const port = (0, manager_1.getAndroidPort)() || 6080;
             req.url = "/" + parts.slice(3).join("/");
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
@@ -163,14 +170,12 @@ app.prepare()
         const docName = query.doc || "default";
         const { doc, awareness } = getOrCreateDoc(docName);
         conn.binaryType = "arraybuffer";
-        // Send Sync Step 1
         const encoder = encoding.createEncoder();
-        encoding.writeVarUint(encoder, 0); // messageSync
+        encoding.writeVarUint(encoder, 0);
         syncProtocol.writeSyncStep1(encoder, doc);
         conn.send(encoding.toUint8Array(encoder));
-        // Send Awareness
         const awarenessEncoder = encoding.createEncoder();
-        encoding.writeVarUint(awarenessEncoder, 1); // messageAwareness
+        encoding.writeVarUint(awarenessEncoder, 1);
         encoding.writeVarUint8Array(awarenessEncoder, awarenessProtocol.encodeAwarenessUpdate(awareness, Array.from(awareness.getStates().keys())));
         conn.send(encoding.toUint8Array(awarenessEncoder));
         conn.on("message", (message) => {
@@ -180,9 +185,8 @@ app.prepare()
             if (messageType === 0) {
                 encoding.writeVarUint(encoder, 0);
                 syncProtocol.readSyncMessage(decoder, encoder, doc, null);
-                if (encoding.length(encoder) > 1) {
+                if (encoding.length(encoder) > 1)
                     conn.send(encoding.toUint8Array(encoder));
-                }
             }
             else if (messageType === 1) {
                 awarenessProtocol.applyAwarenessUpdate(awareness, decoding.readVarUint8Array(decoder), conn);
@@ -203,7 +207,6 @@ app.prepare()
         });
     });
     io.on("connection", (socket) => {
-        console.log("Terminal socket connected:", socket.id);
         let shell = null;
         socket.on("terminal:start", ({ cols, rows }) => {
             const shellPath = os_1.default.platform() === "win32" ? "powershell.exe" : process.env.SHELL || "bash";
@@ -214,65 +217,36 @@ app.prepare()
                 cwd: (process.env.HOME || process.cwd()),
                 env: process.env,
             });
-            shell.onData((data) => {
-                socket.emit("terminal:data", data);
-            });
-            shell.onExit(({ exitCode }) => {
-                socket.emit("terminal:data", `\r\n\x1b[31m[Process exited with code ${exitCode}]\x1b[0m\r\n`);
-            });
+            shell.onData((data) => socket.emit("terminal:data", data));
+            shell.onExit(({ exitCode }) => socket.emit("terminal:data", `\r\n\x1b[31m[Process exited with code ${exitCode}]\x1b[0m\r\n`));
         });
-        socket.on("terminal:write", (data) => {
-            if (shell)
-                shell.write(data);
-        });
-        socket.on("terminal:resize", ({ cols, rows }) => {
-            if (shell) {
-                try {
-                    shell.resize(cols, rows);
-                }
-                catch (e) {
-                    console.error("Resize error", e);
-                }
+        socket.on("terminal:write", (data) => { if (shell)
+            shell.write(data); });
+        socket.on("terminal:resize", ({ cols, rows }) => { if (shell)
+            try {
+                shell.resize(cols, rows);
             }
-        });
-        socket.on("disconnect", () => {
-            console.log("Terminal socket disconnected:", socket.id);
-            if (shell) {
-                shell.kill();
-                shell = null;
-            }
-        });
+            catch (e) {
+                console.error(e);
+            } });
+        socket.on("disconnect", () => { if (shell) {
+            shell.kill();
+            shell = null;
+        } });
     });
     const PORT = process.env.PORT || 7860;
     server.listen(PORT, () => {
-        var _a, _b, _c, _d;
-        const pingUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.AUTH_URL || process.env.NEXTAUTH_URL || process.env.HF_URL || `http://localhost:${PORT}`;
+        let inferredUrl = `http://localhost:${PORT}`;
+        if (process.env.SPACE_ID) {
+            const [user, name] = process.env.SPACE_ID.split('/');
+            inferredUrl = `https://${user.toLowerCase()}-${name.toLowerCase()}.hf.space`;
+        }
+        const pingUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.HF_URL || inferredUrl;
         console.log(`> Ready on ${pingUrl}`);
-        console.log(`[BOOT] Server is now listening on port ${PORT}`);
-        // --- Deployment Diagnostics ---
-        console.log("[DIAG] Platform Process Info:");
-        console.log(`[DIAG] UID: ${(_b = (_a = process.getuid) === null || _a === void 0 ? void 0 : _a.call(process)) !== null && _b !== void 0 ? _b : 'N/A'}, GID: ${(_d = (_c = process.getgid) === null || _c === void 0 ? void 0 : _c.call(process)) !== null && _d !== void 0 ? _d : 'N/A'}`);
-        try {
-            if ((0, fs_1.existsSync)('/data')) {
-                const stats = (0, fs_1.statSync)('/data');
-                console.log(`[DIAG] /data mount found. Owner: ${stats.uid}, Group: ${stats.gid}, Mode: ${stats.mode.toString(8)}`);
-            }
-            else {
-                console.log("[DIAG] /data mount NOT found.");
-            }
-        }
-        catch (error) {
-            const msg = error instanceof Error ? error.message : String(error);
-            console.error("[DIAG] Failed to probe /data:", msg);
-        }
-        // ------------------------------
-        // Self-ping mechanism every 5 minutes to keep server awake
-        // Using external URL if available to ensure proxy layers register the traffic
         setInterval(() => {
             fetch(`${pingUrl}/api/health`)
                 .then(res => res.json())
-                .then(data => console.log(`[Self-Ping] Health check:`, data))
-                .catch(err => console.error(`[Self-Ping] Failed for ${pingUrl}:`, err.message));
+                .catch(() => { });
         }, 5 * 60 * 1000);
     });
 });

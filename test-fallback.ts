@@ -7,12 +7,12 @@ async function testNativeFallback() {
             id: 'test-id',
             userId: 'test-user',
             projectName: 'test-project',
-            onLog: (msg) => console.log(`[TEST-LOG] ${msg}`)
+            onLog: (msg: string) => console.log(`[TEST-LOG] ${msg}`)
         });
         
         console.log("Test Result:", JSON.stringify(result, null, 2));
         
-        if (result.containerId.startsWith('native-')) {
+        if (result.containerId?.startsWith('native-')) {
             console.log("SUCCESS: Fallback to Native Mode detected.");
         } else {
             console.log("INFO: Docker was available, running in Docker mode.");

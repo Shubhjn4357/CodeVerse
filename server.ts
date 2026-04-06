@@ -335,7 +335,12 @@ app.prepare()
     const PORT = process.env.PORT || 7860;
     server.listen(PORT, () => {
         let inferredUrl = `http://localhost:${PORT}`;
-        if (process.env.SPACE_ID) {
+        
+        if (process.env.SIMULATE_HF === 'true') {
+            console.warn("⚠️  HUGGING FACE SIMULATION MODE ACTIVE (Shared Memory, Native Fallback, Sandboxed FS)");
+        }
+
+        if (process.env.SPACE_ID && process.env.SPACE_ID.includes('/')) {
             const [user, name] = process.env.SPACE_ID.split('/');
             inferredUrl = `https://${user.toLowerCase()}-${name.toLowerCase()}.hf.space`;
         }

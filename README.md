@@ -7,6 +7,8 @@ sdk: docker
 app_port: 7860
 pinned: false
 license: mit
+shm_size: 2Gi
+suggested_hardware: cpu-upgrade
 ---
 
 ## 🚀 CodeVerse: Premium Cloud IDE Orchestrator

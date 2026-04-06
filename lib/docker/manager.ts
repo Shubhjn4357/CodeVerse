@@ -51,8 +51,14 @@ function findAvailablePort(): number {
  */
 export async function isDockerAvailable(): Promise<{ available: boolean; reason?: string }> {
     const socketPath = process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock';
-    if (process.env.SPACE_ID) return { available: false, reason: "Hugging Face Space (Sandboxed)" };
-    if (!fs.existsSync(socketPath)) return { available: false, reason: "Docker socket missing" };
+    
+    if (process.env.SIMULATE_HF === 'true') {
+        return { available: false, reason: "Hugging Face Simulation Mode (Artificial Sandbox)" };
+    }
+    
+    if (process.env.SPACE_ID) {
+        return { available: false, reason: "Hugging Face Space (Native Sandboxed)" };
+    }
     try {
         const docker = new Docker({ socketPath: process.platform === 'win32' ? undefined : socketPath });
         await docker.ping();

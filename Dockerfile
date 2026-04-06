@@ -8,6 +8,8 @@ FROM docker.io/library/node:20-bookworm-slim@sha256:1e85773c98c31d4fe5b545e4cb17
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_ROOT_USER_ACTION=ignore
 ENV PIP_BREAK_SYSTEM_PACKAGES=true
+ENV NODE_OPTIONS="--max-old-space-size=4096"
+
 # HF Spaces use UID 1000 (standard 'node' user)
 ENV HOME=/home/node
 ENV WORKSPACE_ROOT=/home/node/app/workspaces
@@ -18,13 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb fluxbox novnc websockify libnss3 libatk-bridge2.0-0 libcups2 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Hugging Face CLI for persistence layer
-RUN pip3 install --no-cache-dir "huggingface_hub[cli]"
+# Install Hugging Face CLI & code-server in a single hardening pass
+RUN pip3 install --no-cache-dir "huggingface_hub[cli]" && \
+    curl -fsSL https://code-server.dev/install.sh | sh
 
-# Install code-server (Liquid-smooth IDE binary)
-RUN curl -fsSL https://code-server.dev/install.sh | sh
-
-# 2. Nix Installation (Optimized for UID 1000)
+# 2. Nix Installation (Optimized for Hugging Face 2026)
 RUN mkdir -p /nix && chown node:node /nix && \
     mkdir -p /etc/nix && echo "experimental-features = nix-command flakes" > /etc/nix/nix.conf && \
     mkdir -p /home/node/.cache && \
@@ -33,12 +33,12 @@ RUN mkdir -p /nix && chown node:node /nix && \
 
 USER node
 WORKDIR /home/node
-
-# Use bash for reliable environment sourcing
 SHELL ["/bin/bash", "-c"]
 
 # Use the Official Nix Installer (Non-interactive & No-daemon)
+# Note: ulimit is set to the builder's maximum during install to prevent stack overflow
 RUN export XDG_CACHE_HOME=/home/node/.cache && \
+    ulimit -s $(ulimit -Hs) 2>/dev/null || true && \
     curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
     . /home/node/.nix-profile/etc/profile.d/nix.sh && \
     nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
@@ -69,12 +69,10 @@ ENV NODE_ENV=production
 
 # Final Permissions Sync for persistence
 USER root
-RUN mkdir -p /home/node/app/workspaces && \
-    mkdir -p /home/node/app/dist && \
+RUN mkdir -p /home/node/app/workspaces /home/node/app/dist && \
     chown -R node:node /home/node/app /home/node
 
 USER node
 
 # Authoritative Entrypoint for HF Spaces April 2026
-# Handle ulimit gracefully while launching the custom server
 CMD ["sh", "-c", "ulimit -s $(ulimit -Hs) 2>/dev/null || true && node dist/server.js"]

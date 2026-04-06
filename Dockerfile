@@ -50,5 +50,6 @@ ENV NODE_ENV=production
 # Ensure workspaces are writable in the Space
 RUN mkdir -p /home/nodejs/app/workspaces && chown -R nodejs:nodejs /home/nodejs/app /app
 
+# Satisfy system limits for Nix & high-concurrency Node.js (April 2026)
 USER nodejs
-CMD ["npm", "start"]
+CMD ["sh", "-c", "ulimit -s 65536 && npm start"]

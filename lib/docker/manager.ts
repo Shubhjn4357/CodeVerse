@@ -2,12 +2,25 @@ import fs from 'fs';
 import { spawn, ChildProcess } from 'child_process';
 import path from 'path';
 import Docker from 'dockerode';
+import { EventEmitter } from 'events';
+import { IdxEngine } from '../idx/idx-engine';
 
 /**
  * Registry for native workspace processes (IDE instances running outside Docker)
  * Map<workspaceId, { pid: number; port: number; process: ChildProcess }>
  */
 const nativeProcesses = new Map<string, { pid: number; port: number; process: ChildProcess }>();
+
+/**
+ * Internal Provisioning Bus to multicast logs to concurrent clients.
+ */
+class ProvisioningBus extends EventEmitter {}
+export const provisioningBus = new ProvisioningBus();
+
+/**
+ * Map to track active provisioning promises to prevent redundant creation loops.
+ */
+const pendingProvisioning = new Map<string, Promise<WorkspaceOperationResult>>();
 
 /**
  * Checks if a native workspace is currently running.
@@ -23,15 +36,12 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 /**
  * Finds an available port in the 8080-8099 range.
- * Defaults to 8080 if not occupied.
  */
 function findAvailablePort(): number {
     const occupiedPorts = Array.from(nativeProcesses.values()).map(p => p.port);
-    // Start with 8080 to maintain baseline proxy consistency
     for (let port = 8080; port <= 8099; port++) {
         if (!occupiedPorts.includes(port)) return port;
     }
-    // Final fallback
     return Math.floor(Math.random() * (8999 - 8100) + 8100);
 }
 
@@ -62,7 +72,7 @@ export async function stopNativeWorkspace(id: string): Promise<boolean> {
             nativeProcesses.delete(id);
             return true;
         } catch (e) {
-            console.error(`[MANAGER] Failed to kill code-server ${entry.pid}:`, e);
+            console.error(`[MANAGER] Failed to kill code-server ${id}:`, e);
             nativeProcesses.delete(id);
         }
     }
@@ -106,22 +116,15 @@ export interface WorkspaceOperationResult {
 }
 
 /**
- * Workspace provisioner with REAL child-process orchestration.
- * Robust handshake and error handling to prevent "Deployment Engine Failure".
+ * INTERNAL: Core provisioning logic with IDX support and auto-provisioning baseline.
  */
-export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<WorkspaceOperationResult> {
-    const log = (msg: string) => { if (config.onLog) config.onLog(`[MANAGER] ${msg}`); };
+async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOperationResult> {
+    const log = (msg: string) => { 
+        if (config.onLog) config.onLog(`[IDX:ENGINE] ${msg}`);
+        provisioningBus.emit(`log:${config.id}`, msg);
+    };
 
-    if (nativeProcesses.has(config.id)) {
-        log(`Workspace detected. Re-establishing secure proxy link...`);
-        return {
-            success: true,
-            containerId: `native-${config.id}`,
-            port: nativeProcesses.get(config.id)!.port
-        };
-    }
-
-    log(`Provisioning real-time isolation for '${config.projectName}'...`);
+    log(`Provisioning hermetic environment for '${config.projectName}'...`);
     
     // 1. Prepare Workspace Directory
     const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(process.cwd(), 'workspaces');
@@ -130,14 +133,49 @@ export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<
     
     if (!fs.existsSync(workspacePath)) {
         fs.mkdirSync(workspacePath, { recursive: true });
-        log(`Created isolated filesystem segment: ${config.id.slice(0, 8)}`);
+        log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
     }
 
-    // 2. Identify Target Port
-    const port = findAvailablePort();
-    log(`Assigned dynamic port: ${port}`);
+    // 2. AUTO-SETUP: Provide default .idx/dev.nix if missing
+    const idxDir = path.join(workspacePath, '.idx');
+    const devNixPath = path.join(idxDir, 'dev.nix');
+    if (!fs.existsSync(devNixPath)) {
+        log(`No declarative config found. Provisioning IDX baseline (.idx/dev.nix)...`);
+        if (!fs.existsSync(idxDir)) fs.mkdirSync(idxDir, { recursive: true });
+        const defaultNix = `{ pkgs, ... }: {
+  packages = [ pkgs.nodejs pkgs.go pkgs.python3 ];
+  onCreate = "npm install";
+  onStart = "npm run dev";
+}`;
+        fs.writeFileSync(devNixPath, defaultNix);
+        log(`Baseline provisioned successfully.`);
+    }
 
-    // 3. Spawn Real code-server Process (Linux priority)
+    // 3. IDX Engine: Sync Environment
+    const idxConfig = IdxEngine.getIdxConfig(workspacePath);
+    if (idxConfig) {
+        log(`Declarative config detected. Initializing synchronization...`);
+        IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
+        
+        const flagPath = path.join(workspacePath, '.idx-created');
+        if (!fs.existsSync(flagPath)) {
+            if (idxConfig.onCreate) {
+                log(`Executing onCreate lifecycle hook...`);
+                IdxEngine.runHook(workspacePath, 'onCreate', idxConfig.onCreate, (msg) => log(msg));
+            }
+            fs.writeFileSync(flagPath, new Date().toISOString());
+        }
+
+        if (idxConfig.onStart) {
+            log(`Executing onStart lifecycle hook...`);
+            IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg));
+        }
+    }
+
+    // 4. Identify Target Port
+    const port = findAvailablePort();
+
+    // 5. Spawn Real code-server Process (Linux priority)
     const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
     const args = process.platform === 'win32' ? ['code-server'] : [];
     
@@ -158,37 +196,30 @@ export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<
 
     log(`Spawning VS Code Orchestrator (PID: ${child.pid})...`);
 
-    // Handle startup errors early
-    child.on('error', (err) => {
-        log(`[FATAL] Failed to launch IDE binary: ${err.message}`);
-    });
-
+    child.on('error', (err) => log(`[FATAL] IDE binary failure: ${err.message}`));
     child.stdout.on('data', (data) => {
         const out = data.toString();
-        if (out.includes('listening on')) log(`[UP] ${out.trim()}`);
+        if (out.includes('listening on')) log(`[IDX:UP] ${out.trim()}`);
     });
 
-    child.stderr.on('data', (data) => {
-        const err = data.toString();
-        if (err.toLowerCase().includes('error')) log(`[STDERR] ${err.trim()}`);
-    });
-
-    // 4. Register in active pool
+    // 6. Register in active pool
     nativeProcesses.set(config.id, { pid: child.pid!, port, process: child });
 
-    // 5. Robust Handshake Loop (Increased attempts + explicit error on failure)
+    // 7. Handshake Loop
     let attempts = 0;
     while (attempts < 15) {
         try {
             const res = await fetch(`http://127.0.0.1:${port}`);
             if (res.ok) {
-                log(`Handshake verified. CodeVerse Engine Online.`);
-                return {
+                log(`Handshake verified. Studio Engine Online.`);
+                const finalResult = {
                     success: true,
                     containerId: `native-${config.id}`,
                     androidPort: config.withAndroidEmulator ? 6080 : undefined,
                     port: port
                 };
+                provisioningBus.emit(`ready:${config.id}`, finalResult);
+                return finalResult;
             }
         } catch {
             await delay(1000);
@@ -197,14 +228,38 @@ export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<
         }
     }
 
-    // Failure Case
-    log(`[FATAL] IDE core failed to respond on 127.0.0.1:${port} after 15 attempts.`);
-    stopNativeWorkspace(config.id);
-    
-    return {
-        success: false,
-        error: "IDE_HANDSHAKE_TIMEOUT: The orchestration layer failed to reach the IDE process. Check resource limits on Hugging Face."
-    };
+    log(`[FATAL] Handshake timeout on 127.0.0.1:${port}.`);
+    const entry = nativeProcesses.get(config.id);
+    if (entry) {
+        entry.process.kill();
+        nativeProcesses.delete(config.id);
+    }
+    const errResult = { success: false, error: "IDE_HANDSHAKE_TIMEOUT" };
+    provisioningBus.emit(`error:${config.id}`, errResult);
+    return errResult;
+}
+
+/**
+ * Workspace provisioner with ATOMIC single-instance locking.
+ */
+export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<WorkspaceOperationResult> {
+    if (nativeProcesses.has(config.id)) {
+        return {
+            success: true,
+            containerId: `native-${config.id}`,
+            port: nativeProcesses.get(config.id)!.port
+        };
+    }
+
+    let pending = pendingProvisioning.get(config.id);
+    if (!pending) {
+        pending = performProvisioning(config).finally(() => {
+            pendingProvisioning.delete(config.id);
+        });
+        pendingProvisioning.set(config.id, pending);
+    }
+
+    return await pending;
 }
 
 /**

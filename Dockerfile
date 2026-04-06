@@ -27,12 +27,23 @@ RUN apt-get update && apt-get install -y \
     libgtk-3-0 \
     # Docker Client and Daemon (for build-time environment availability)
     docker.io \
+    # NIX Support (Declarative Environments)
+    xz-utils \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fL https://github.com/coder/code-server/releases/download/v4.96.2/code-server-4.96.2-linux-amd64.tar.gz \
     | tar -C /usr/local/lib -xz \
     && mv /usr/local/lib/code-server-4.96.2-linux-amd64 /usr/local/lib/code-server \
     && ln -s /usr/local/lib/code-server/bin/code-server /usr/local/bin/code-server
 
+# Install Nix for Unprivileged Usage
+# Single-user mode without root, configured for /nix
+RUN mkdir -p /nix && chown node:node /nix
+USER node
+RUN curl -L https://nixos.org/nix/install | sh -s -- --no-daemon
+ENV PATH="/home/node/.nix-profile/bin:/home/node/.nix-profile/sbin:/nix/var/nix/profiles/default/bin:/nix/var/nix/profiles/default/sbin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ENV NIX_PATH="nixpkgs=https://github.com/NixOS/nixpkgs/archive/master.tar.gz"
+
+USER root
 # Install Android SDK Command Line Tools
 ENV ANDROID_SDK_ROOT /app/android-sdk
 RUN mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools \
@@ -49,12 +60,7 @@ WORKDIR /app
 
 # Install dependencies based on the preferred package manager
 COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
-RUN \
-  if [ -f package-lock.json ]; then npm ci; \
-  elif [ -f pnpm-lock.yaml ]; then yarn global add pnpm && pnpm i; \
-  elif [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
-  else echo "Lockfile not found." && npm i; \
-  fi
+RUN npm i --omit=dev
 
 # Copy source code and build
 COPY . .
@@ -81,7 +87,6 @@ RUN chown -R node:node /app
 USER node
 
 # Copy needed files with correct ownership to avoid mass chown later
-# Use --chown=node:node to prevent root ownership of copied files
 COPY --chown=node:node --from=builder /app/package.json ./
 COPY --chown=node:node --from=builder /app/package-lock.json* ./
 RUN npm ci --omit=dev && npm cache clean --force

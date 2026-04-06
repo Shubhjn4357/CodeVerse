@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { startWorkspaceContainer } from '@/lib/docker/manager';
+import { startWorkspaceContainer, provisioningBus } from '@/lib/docker/manager';
 import { auth } from '@/auth';
 import { db } from '@/lib/db';
 
@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     // Verify ownership and get project name
     const verifyObj = await db.execute({
         sql: "SELECT project_name FROM workspaces WHERE id = ? AND user_id = ?",
-        args: [id, session.user.id]
+        args: [id, userId]
     });
 
     if (verifyObj.rows.length === 0) {
@@ -37,22 +37,33 @@ export async function GET(req: NextRequest) {
             // Helper to send formatted SSE events
             const sendEvent = (event: string, data: Record<string, unknown> | string) => {
                 const payload = typeof data === 'string' ? data : JSON.stringify(data);
-                controller.enqueue(encoder.encode(`event: ${event}\ndata: ${payload}\n\n`));
+                try {
+                    controller.enqueue(encoder.encode(`event: ${event}\ndata: ${payload}\n\n`));
+                } catch {
+                    // Controller might be closed if client disconnected
+                }
             };
+
+            // MULTICAST: Listen to existing provisioning session if one is already active
+            const onLog = (msg: string) => sendEvent('log', msg);
+            provisioningBus.on(`log:${id}`, onLog);
 
             try {
                 // Initialize workspace and pipe logs directly from the Docker builder engine to SSE client
+                // startWorkspaceContainer is now atomic; it will return the existing promise if already booting.
                 const result = await startWorkspaceContainer({ 
                     id: id as string, 
                     userId: userId,
                     projectName: projectName,
                     withAndroidEmulator: withAndroid, 
-                    onLog: (msg) => sendEvent('log', msg) 
+                    onLog: (msg) => {
+                        // sendEvent('log', msg); // Already handled by the ProvisioningBus multicast
+                    } 
                 });
                 
                 // Completed
                 sendEvent('ready', {
-                    success: true,
+                    success: result.success,
                     port: result.port,
                     androidPort: result.androidPort,
                     appetizeUrl: result.appetizeUrl,
@@ -61,6 +72,7 @@ export async function GET(req: NextRequest) {
                 const e = error as Error;
                 sendEvent('error', { message: e.message || "Failed to start workspace." });
             } finally {
+                provisioningBus.off(`log:${id}`, onLog);
                 controller.close();
             }
         }

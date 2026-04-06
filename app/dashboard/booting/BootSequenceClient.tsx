@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Loader2, ArrowLeft, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { Loader2, ArrowLeft, CheckCircle2, XCircle, RefreshCw, Terminal } from "lucide-react";
 
 export default function BootSequenceClient() {
     const searchParams = useSearchParams();
@@ -25,18 +25,16 @@ export default function BootSequenceClient() {
 
     const boot = useCallback(() => {
         if (!id) {
-            addLog("ERROR: No workspace ID provided.");
+            addLog("[FATAL] Missing workspace identity.");
             setStatus("error");
             return;
         }
 
-        // Close any existing connection before starting a new one
         if (eventSourceRef.current) {
             eventSourceRef.current.close();
             eventSourceRef.current = null;
         }
 
-        // We use a functional approach to initializing state to avoid synchronous cascade warnings
         setStatus("booting");
         setLogs([]);
 
@@ -51,13 +49,11 @@ export default function BootSequenceClient() {
             try {
                 const data = JSON.parse(event.data);
                 if (data.success === false) {
-                    addLog(`[FATAL] ${data.error || "Provisioning failed."}`);
+                    addLog(`[IDX:ERR] Engine failure: ${data.error || "Unknown"}`);
                     setStatus("error");
                 } else {
-                    addLog("[SYSTEM] Workspace Online. Handshake complete.");
+                    addLog("[IDX:APP] Studio Engine Online. Synchronized.");
                     setStatus("ready");
-                    
-                    // Redirect immediately for performance
                     router.push(`/?workspace=${encodeURIComponent(id)}`);
                 }
             } catch (e) {
@@ -75,9 +71,9 @@ export default function BootSequenceClient() {
             try {
                 const data = (event as MessageEvent).data;
                 const errData = data ? JSON.parse(data) : {};
-                addLog(`[FATAL] ${errData.message || "The deployment engine encountered an unexpected interruption."}`);
+                addLog(`[IDX:CRT] ${errData.message || "Environment connection broken."}`);
             } catch {
-                console.warn("Retrying SSE connection via EventSource auto-reconnect...");
+                console.warn("Retrying SSE via IDX-Bus...");
             }
         });
 
@@ -102,59 +98,70 @@ export default function BootSequenceClient() {
 
     return (
         <div className="flex flex-col gap-5">
-            {/* Terminal Log */}
-            <div className="bg-[#0a0a0a] rounded-xl p-4 min-h-[300px] border border-[#222] shadow-[inset_0_0_30px_rgba(0,0,0,0.6)] overflow-y-auto font-mono text-sm h-[450px]">
+            {/* IDX Branded Terminal */}
+            <div className="bg-[#0a0a0a] rounded-xl p-4 min-h-[300px] border border-[#222] shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] overflow-y-auto font-mono text-xs md:text-sm h-[500px] relative group">
+                <div className="absolute top-4 right-4 text-[#333] group-hover:text-zinc-600 transition-colors pointer-events-none uppercase text-[10px] tracking-widest font-bold flex items-center gap-2">
+                    <Terminal size={12} />
+                    IDX Studio Engine
+                </div>
+                
                 {logs.map((log, i) => (
-                    <div key={i} className="mb-1 leading-relaxed">
-                        {log.startsWith("[ERROR]") || log.startsWith("[FATAL]") || log.startsWith("[STDERR]") ? (
-                            <span className="text-red-400">{log}</span>
-                        ) : log.includes("Ready") || log.includes("Online") || log.includes("success") || log.includes("complete") ? (
-                            <span className="text-green-400">{log}</span>
-                        ) : log.startsWith("[SYSTEM]") || log.startsWith("[MANAGER]") || log.startsWith("[IDE-MANAGER]") || log.startsWith("[UP]") ? (
-                            <span className="text-blue-400">{log}</span>
+                    <div key={i} className="mb-0.5 leading-relaxed tracking-tight">
+                         {log.startsWith("[IDX:ERR]") || log.startsWith("[IDX:CRT]") || log.startsWith("[FATAL]") ? (
+                            <span className="text-red-400/90 font-medium">{log}</span>
+                        ) : log.includes("Online") || log.includes("Synchronized") || log.includes("Verified") ? (
+                            <span className="text-green-400 font-bold">{log}</span>
+                        ) : log.startsWith("[IDX:ENGINE]") ? (
+                            <span className="text-blue-400/80">{log}</span>
+                        ) : log.startsWith("[IDX:NIX]") ? (
+                            <span className="text-purple-400/80">{log}</span>
+                        ) : log.startsWith("[IDX:HOOK]") ? (
+                            <span className="text-amber-400/80">{log}</span>
+                        ) : log.startsWith("[IDX:UP]") ? (
+                            <span className="text-zinc-400">{log}</span>
                         ) : (
-                            <span className="text-zinc-500">{log}</span>
+                            <span className="text-zinc-600">{log}</span>
                         )}
                     </div>
                 ))}
 
                 {status === "booting" && (
-                    <div className="flex items-center gap-2 mt-4 text-green-400">
-                        <Loader2 size={14} className="animate-spin" />
-                        <span className="text-sm font-semibold animate-pulse">Synchronizing orchestration layers...</span>
+                    <div className="flex items-center gap-2 mt-4 text-blue-400/60">
+                        <Loader2 size={12} className="animate-spin" />
+                        <span className="text-[11px] font-bold tracking-widest uppercase animate-pulse">Syncing environment...</span>
                     </div>
                 )}
                 {status === "ready" && (
-                    <div className="flex items-center gap-2 mt-4 text-green-400">
-                        <CheckCircle2 size={14} />
-                        <span className="text-sm font-semibold">Deployment Successful. Redirecting...</span>
+                    <div className="flex items-center gap-2 mt-4 text-green-400/60">
+                        <CheckCircle2 size={12} />
+                        <span className="text-[11px] font-bold tracking-widest uppercase">Environment Synchronized</span>
                     </div>
                 )}
                 {status === "error" && (
-                    <div className="flex items-center gap-2 mt-4 text-red-500">
-                        <XCircle size={14} />
-                        <span className="text-sm font-semibold">Deployment Engine Stalled.</span>
+                    <div className="flex items-center gap-2 mt-4 text-red-500/60">
+                        <XCircle size={12} />
+                        <span className="text-[11px] font-bold tracking-widest uppercase">Engine Stalled</span>
                     </div>
                 )}
                 <div ref={endRef} />
             </div>
 
-            {/* Action Buttons on Failure */}
+            {/* Action Buttons */}
             {status === "error" && (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
                     <button
                         onClick={() => router.push("/")}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#161b22] hover:bg-[#21262d] text-zinc-300 hover:text-white rounded-lg text-sm transition-all border border-[#30363d] hover:border-[#444]"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-[#161b22] hover:bg-[#21262d] text-zinc-300 hover:text-white rounded-lg text-sm font-medium transition-all border border-[#30363d] hover:border-[#444]"
                     >
                         <ArrowLeft size={14} />
-                        Back to Dashboard
+                        Platform Dashboard
                     </button>
                     <button
                         onClick={() => boot()}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 hover:text-green-300 rounded-lg text-sm transition-all border border-green-500/20 hover:border-green-500/40"
+                        className="flex items-center gap-2 px-5 py-2.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 rounded-lg text-sm font-medium transition-all border border-blue-500/20 hover:border-blue-500/40"
                     >
                         <RefreshCw size={14} />
-                        Retry Provisioning
+                        Retry Sync
                     </button>
                 </div>
             )}

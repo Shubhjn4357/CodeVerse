@@ -6,7 +6,7 @@ export const ENV_CONFIG = {
     // 1. Storage & Persistence
     HF_TOKEN: process.env.HF_TOKEN || process.env.hfToken || process.env.HF_SPACE || process.env.HuggingFaceToken,
     HF_DATASET_ID: process.env.HF_DATASET_ID || process.env.hfDataset || process.env.HF_DATASET,
-    WORKSPACE_ROOT: process.env.WORKSPACE_ROOT || '/home/nodejs/app/workspaces',
+    WORKSPACE_ROOT: process.env.WORKSPACE_ROOT || '/home/node/app/workspaces',
 
     // 2. Build Acceleration
     CACHIX_CACHE_NAME: process.env.CACHIX_CACHE_NAME || 'code-nix',

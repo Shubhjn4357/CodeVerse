@@ -77,8 +77,8 @@ const proxy = http_proxy_1.default.createProxyServer({
 console.log('----------------------------------------------------');
 console.log('[BOOT] CodeVerse Production Entrypoint Initialized.');
 console.log(`[BOOT] Environment: ${process.env.NODE_ENV || 'development'}`);
-console.log(`[BOOT] Database State: ${process.env.TURSO_URL ? '✅ CONFIGURED' : '❌ MISSING (TURSO_URL)'}`);
-console.log(`[BOOT] Persistence Link: ${process.env.HF_TOKEN ? '✅ CONFIGURED' : '⚠️ UNLINKED (HF_TOKEN Missing)'}`);
+console.log(`[BOOT] Database State: ${process.env.TURSO_URL || process.env.turso_database_url ? '✅ CONFIGURED' : '❌ MISSING (TURSO_URL)'}`);
+console.log(`[BOOT] Persistence Link: ${process.env.HF_TOKEN || process.env.hfToken ? '✅ CONFIGURED' : '⚠️ UNLINKED (HF_TOKEN Missing)'}`);
 console.log(`[BOOT] Stack Limit: ${process.env.ULIMIT_S || 'Container Default'}`);
 console.log('----------------------------------------------------');
 /**

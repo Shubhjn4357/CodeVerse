@@ -8,53 +8,51 @@ FROM docker.io/library/node:20-bookworm-slim@sha256:1e85773c98c31d4fe5b545e4cb17
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PIP_ROOT_USER_ACTION=ignore
 ENV PIP_BREAK_SYSTEM_PACKAGES=true
-ENV HOME=/home/nodejs
-ENV WORKSPACE_ROOT=/home/nodejs/app/workspaces
+# HF Spaces use UID 1000 (standard 'node' user)
+ENV HOME=/home/node
+ENV WORKSPACE_ROOT=/home/node/app/workspaces
 ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 python3-pip make g++ git curl ca-certificates tar unzip bzip2 xz-utils procps net-tools iptables \
     xvfb fluxbox novnc websockify libnss3 libatk-bridge2.0-0 libcups2 libgtk-3-0 \
-    openjdk-17-jre-headless \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Nix & Cachix Installation (2026 Multi-User Stable)
-RUN useradd -m -s /bin/bash nodejs && \
-    mkdir -p /nix && chown nodejs /nix && \
+# 2. Nix & Cachix Installation (Optimized for UID 1000)
+RUN mkdir -p /nix && chown node /nix && \
     mkdir -p /etc/nix && echo "experimental-features = nix-command flakes" > /etc/nix/nix.conf
 
-USER nodejs
-WORKDIR /home/nodejs
+USER node
+WORKDIR /home/node
 
 RUN ulimit -s $(ulimit -Hs) 2>/dev/null || true && \
     curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
     . ~/.nix-profile/etc/profile.d/nix.sh && \
     nix profile add nixpkgs#cachix nixpkgs#nix nixpkgs#cacert
 
-ENV PATH="/home/nodejs/.nix-profile/bin:/home/nodejs/.nix-profile/sbin:${PATH}"
+ENV PATH="/home/node/.nix-profile/bin:/home/node/.nix-profile/sbin:${PATH}"
 ENV NIX_PATH="nixpkgs=https://github.com/NixOS/nixpkgs/archive/master.tar.gz"
 
 # 3. Application Provisioning
 USER root
 WORKDIR /app
-COPY package*.json ./
-RUN npm install -g npm@11.12.1 && npm install --no-audit --no-fund --quiet --legacy-peer-deps
+COPY --chown=node:node package*.json ./
+RUN npm install --no-audit --no-fund --quiet --legacy-peer-deps
 
-COPY . .
+COPY --chown=node:node . .
 RUN npm run build
 
 # 4. Runtime Hardening
 ENV PORT=7860
 ENV NODE_ENV=production
 
-# Final Provisioning & Permissions
-RUN mkdir -p /home/nodejs/app/workspaces && \
-    mkdir -p /home/nodejs/app/dist && \
-    chown -R nodejs:nodejs /home/nodejs/app /app
+# Final Permissions Sync
+RUN mkdir -p /home/node/app/workspaces && \
+    mkdir -p /home/node/app/dist && \
+    chown -R node:node /home/node/app /app
 
-# Ensure Nix binaries are in place for the runtime user
-USER nodejs
+USER node
 
 # Authoritative Entrypoint for HF Spaces April 2026
-# Gracefully handle ulimit restrictions while setting production-grade stack limits
+# Gracefully handle ulimit while setting production stack limits
 CMD ["sh", "-c", "ulimit -s $(ulimit -Hs) 2>/dev/null || true && node dist/server.js"]

@@ -21,8 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Hugging Face CLI & code-server in a single hardening pass
-RUN pip3 install --no-cache-dir "huggingface_hub[cli]" && \
-    curl -fsSL https://code-server.dev/install.sh | sh
+# Install code-server globally (as root)
+RUN curl -fsSL https://code-server.dev/install.sh | sh
 
 # 2. Nix Installation (Hardened for Hugging Face 2026)
 RUN mkdir -p /nix && chown node:node /nix && \
@@ -34,8 +34,9 @@ USER node
 WORKDIR /home/node
 SHELL ["/bin/bash", "-c"]
 
-# Note: ulimit is set to the builder's maximum during install to prevent stack overflow.
-# IMPORTANT: ~/.nix-defexpr/channels should NOT be pre-created as it conflicts with Nix's symlink.
+# Note: ulimit is set to the builder's maximum during install.
+# If you see 'Stack size hard limit is 10485760...', this is an expected, benign warning 
+# on Hugging Face Spaces (10MB limit). Nix prefers 60MB but 10MB is sufficient for CodeVerse.
 RUN export XDG_CACHE_HOME=/home/node/.cache && \
     ulimit -s $(ulimit -Hs) 2>/dev/null || true && \
     rm -rf /home/node/.nix-defexpr /home/node/.nix-profile /home/node/.nix-channels && \
@@ -44,11 +45,14 @@ RUN export XDG_CACHE_HOME=/home/node/.cache && \
     /home/node/.nix-profile/bin/nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
     /home/node/.nix-profile/bin/nix-channel --update
 
-ENV PATH="/home/node/.nix-profile/bin:/home/node/.nix-profile/sbin:${PATH}"
+ENV PATH="/home/node/.local/bin:/home/node/.nix-profile/bin:/home/node/.nix-profile/sbin:${PATH}"
 ENV NIX_PATH="nixpkgs=/home/node/.nix-defexpr/channels/nixpkgs"
 
 # 3. Application Provisioning
 USER root
+RUN pip3 install --no-cache-dir --upgrade "huggingface_hub[cli]" 
+# Use Nix to install Cachix globally (for the container baseline)
+RUN /home/node/.nix-profile/bin/nix profile add nixpkgs#cachix
 RUN mkdir -p /home/node/app && chown -R node:node /home/node/app
 WORKDIR /home/node/app
 

@@ -23,7 +23,7 @@ export class IdxEngine {
     return {
       packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker'],
       onCreate: 'npm install',
-      onStart: 'npm run dev'
+      onStart: 'sleep 5 && npm run dev'
     };
   }
 
@@ -89,6 +89,15 @@ export class IdxEngine {
     }
 
     if (hasCachix) {
+      const cachixToken = process.env.CACHIX_AUTH_TOKEN;
+      if (cachixToken) {
+          log(`Cachix authentication detected. Configuring access...`);
+          await new Promise<void>((resolve) => {
+              const auth = spawn('cachix', ['authtoken', cachixToken], { env: { ...process.env, HOME: workspacePath } });
+              auth.on('close', () => resolve());
+          });
+      }
+
       log(`Cachix acceleration detected. Setting up cache: ${cachixName}...`);
       try {
         await new Promise<void>((resolve, reject) => {
@@ -136,28 +145,46 @@ export class IdxEngine {
 
   /**
    * Executes the 'onCreate' and 'onStart' hooks.
-   * ASYNCHRONOUS Spawning to prevent Blocking.
+   * supports background execution for 'onStart' to prevent blocking the IDE handshake.
    */
-  static async runHook(workspacePath: string, hookName: 'onCreate' | 'onStart', script: string, onLog?: (msg: string) => void): Promise<void> {
+  static async runHook(workspacePath: string, hookName: 'onCreate' | 'onStart', script: string, onLog?: (msg: string) => void, background = false): Promise<void> {
     const log = (msg: string) => { if (onLog) onLog(`[IDX:HOOK] ${hookName}: ${msg}`); };
-    log(`Executing script...`);
+    log(`Executing script... ${background ? '(Background)' : ''}`);
 
-    await new Promise<void>((resolve, reject) => {
+    const hookPromise = new Promise<void>((resolve, reject) => {
+      // 🟢 PORT DE-CONFLICTION: Ensure hooks don't inherit the main orchestrator's port 7860
+      const spawnEnv: any = { ...process.env, HOME: workspacePath };
+      delete spawnEnv.PORT;
+      delete spawnEnv.SERVER_PORT;
+
       const child = spawn('/bin/bash', ['-c', script], {
         cwd: workspacePath,
-        env: { ...process.env, HOME: workspacePath }
+        env: spawnEnv
       });
 
       child.stdout.on('data', (data) => log(data.toString().trim()));
       child.stderr.on('data', (data) => log(`[WARN] ${data.toString().trim()}`));
       
       child.on('close', (code) => {
-        if (code === 0) resolve();
-        else reject(new Error(`Hook ${hookName} failed with code ${code}`));
+        if (code === 0) {
+            log(`Hook ${hookName} completed successfully.`);
+            resolve();
+        } else {
+            const err = new Error(`Hook ${hookName} failed with code ${code}`);
+            log(`[ERROR] ${err.message}`);
+            reject(err);
+        }
       });
-    }).catch((err: unknown) => {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      log(`[ERROR] ${errMsg}`);
+
+      // If background, resolve immediately after spawn
+      if (background) {
+        log(`Hook detached and running in baseline context.`);
+        resolve();
+      }
     });
+
+    if (!background) {
+        await hookPromise.catch(() => {}); // Catch handled in promise
+    }
   }
 }

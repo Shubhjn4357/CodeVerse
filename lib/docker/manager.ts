@@ -185,7 +185,8 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
 
     if (idxConfig.onStart) {
         log(`Executing onStart lifecycle hook...`);
-        await IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg));
+        // ONSTART HOOKS MUST BE BACKGROUND: They typically start servers (npm run dev) and never exit.
+        await IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg), true);
     }
 
     // 4. Identify Target Port
@@ -238,9 +239,11 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
                 return finalResult;
             }
         } catch {
+            if (attempts % 3 === 0) log(`[INFO] Scanning for IDE heartbeat... (Attempt ${attempts}/15)`);
+            if (attempts === 5) log(`[INFO] Nix evaluation in progress. Cold boot detected.`);
+            if (attempts === 10) log(`[WARN] Handshake threshold approaching. IDE core high load.`);
             await delay(1000);
             attempts++;
-            if (attempts % 3 === 0) log(`Warming up IDE core (attempt ${attempts}/15)...`);
         }
     }
 

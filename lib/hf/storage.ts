@@ -55,7 +55,9 @@ export class HFStorage {
             const tmpDir = '/tmp/hf-sync';
             if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-            await this.execAsync(`huggingface-cli download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN}`, onLog);
+            // 2026 Resilience: try 'huggingface-cli' then fallback to newer 'hf' binary
+            const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN}) || (hf download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN})`;
+            await this.execAsync(cmd, onLog);
             
             const tarPath = path.join(tmpDir, 'profile.tar.gz');
             if (fs.existsSync(tarPath)) {
@@ -82,7 +84,9 @@ export class HFStorage {
 
             const tarPath = path.join(tmpDir, 'profile.tar.gz');
             await this.execAsync(`tar -czf ${tarPath} -C ${process.env.HOME || '/home/node'} .nix-profile`, onLog);
-            await this.execAsync(`huggingface-cli upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN}`, onLog);
+            // 2026 Resilience: try 'huggingface-cli' then fallback to newer 'hf' binary
+            const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN}) || (hf upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN})`;
+            await this.execAsync(cmd, onLog);
             
             onLog?.(`[HF:STORAGE] Profile synchronized successfully.`);
         } catch (e: unknown) {

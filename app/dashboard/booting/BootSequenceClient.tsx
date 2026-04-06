@@ -115,10 +115,12 @@ export default function BootSequenceClient() {
                             <span className="text-blue-400/80">{log}</span>
                         ) : log.startsWith("[IDX:NIX]") ? (
                             <span className="text-purple-400/80">{log}</span>
+                        ) : log.startsWith("[HF:STORAGE]") ? (
+                            <span className="text-cyan-400/80">{log}</span>
                         ) : log.startsWith("[IDX:HOOK]") ? (
                             <span className="text-amber-400/80">{log}</span>
-                        ) : log.startsWith("[IDX:UP]") ? (
-                            <span className="text-zinc-400">{log}</span>
+                        ) : log.startsWith("[IDX:UP]") || log.includes("Cachix") ? (
+                            <span className="text-zinc-400 font-medium italic">{log}</span>
                         ) : (
                             <span className="text-zinc-600">{log}</span>
                         )}

@@ -13,6 +13,7 @@ import {
 import { TEMPLATE_REGISTRY } from "@/constants/extensions";
 import Image from "next/image";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import DashboardVitals from "../DashboardVitals";
 
 interface Project {
     id: string;
@@ -67,6 +68,15 @@ export default function Dashboard() {
     }, []);
     useEffect(() => {
         fetchProjects();
+        
+        // PREDICTIVE HYDRATION: Pre-warm the largest or most recent project
+        if (projects.length > 0) {
+            const latest = projects[0];
+            fetch("/api/workspace", {
+                method: "POST",
+                body: JSON.stringify({ action: "prewarm", id: latest.id })
+            }).catch(console.error);
+        }
     }, [fetchProjects]);
 
 
@@ -216,6 +226,11 @@ export default function Dashboard() {
 
             {/* Body */}
             <div className="flex-1 overflow-hidden dashboard-grid">
+                {/* Dashboard Vitals (Strategic Integration) */}
+                <div className="col-span-full px-8 pt-6">
+                    <DashboardVitals />
+                </div>
+
                 {/* Left Panel */}
                 <div className="border-r border-(--border-subtle) flex flex-col overflow-y-auto p-6 gap-6">
                     {/* Greeting */}

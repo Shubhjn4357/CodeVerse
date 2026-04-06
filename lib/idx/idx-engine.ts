@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { execSync } from 'child_process';
+import { spawn } from 'child_process';
 
 /**
  * Interface representing the .idx/dev.nix configuration.
@@ -13,6 +13,7 @@ export interface IdxConfig {
 
 /**
  * IDX Engine for declarative workspace environments.
+ * Refactored for 2026 Asynchronous Execution to prevent Event Loop blocking.
  */
 export class IdxEngine {
   /**
@@ -25,7 +26,6 @@ export class IdxEngine {
     try {
       const content = fs.readFileSync(configPath, 'utf8');
       
-      // Simple regex-based parser for .idx/dev.nix (HCI: Nix syntax is complex, but we target common patterns)
       const packagesMatch = content.match(/packages\s*=\s*\[([\s\S]*?)\]/);
       const onCreateMatch = content.match(/onCreate\s*=\s*"{1,3}([\s\S]*?)"{1,3}/);
       const onStartMatch = content.match(/onStart\s*=\s*"{1,3}([\s\S]*?)"{1,3}/);
@@ -43,50 +43,75 @@ export class IdxEngine {
 
   /**
    * Synchronizes the Nix environment based on the declarative packages.
+   * ASYNCHRONOUS Spawning to prevent Blocking.
    */
-  static syncNixEnvironment(workspacePath: string, config: IdxConfig, onLog?: (msg: string) => void) {
+  static async syncNixEnvironment(workspacePath: string, config: IdxConfig, onLog?: (msg: string) => void): Promise<void> {
     if (!config.packages || config.packages.length === 0) return;
 
     const log = (msg: string) => { if (onLog) onLog(`[IDX:NIX] ${msg}`); };
     log(`Syncing system packages: ${config.packages.join(', ')}...`);
 
-    try {
-      // Use nix-env to install the declared packages into the home profile
-      // In a real Google Cloud Workstation, this would be a nix-shell or flake sync
-      for (const pkg of config.packages) {
-        log(`Installing ${pkg}...`);
-        // Note: pkg is usually 'pkgs.nodejs', we strip the prefix if needed
-        const pkgName = pkg.replace('pkgs.', '');
-        execSync(`nix-env -iA nixpkgs.${pkgName}`, { 
-          cwd: workspacePath, 
-          env: { ...process.env, HOME: workspacePath } 
+    // CACHIX ACCELERATION
+    const cachixName = process.env.CACHIX_CACHE_NAME;
+    if (cachixName) {
+      log(`Cachix acceleration detected for '${cachixName}'. Setting up cache...`);
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn('cachix', ['use', cachixName], {
+            cwd: workspacePath,
+            env: { ...process.env, HOME: workspacePath }
+          });
+          child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`Cachix setup failed with code ${code}`)));
         });
+      } catch (e) {
+        log(`[WARN] Cachix setup failed. Falling back to default binary cache.`);
+        console.error(e);
       }
-      log(`Environment synchronized successfully.`);
-    } catch (e) {
-      log(`[ERROR] Nix sync failed. Reverting to base image SDKs.`);
-      console.error(e);
     }
+
+    for (const pkg of config.packages) {
+      log(`Installing ${pkg}...`);
+      const pkgName = pkg.replace('pkgs.', '');
+      
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn('nix-env', ['-iA', `nixpkgs.${pkgName}`], {
+          cwd: workspacePath,
+          env: { ...process.env, HOME: workspacePath, NIX_PATH: `nixpkgs=https://github.com/NixOS/nixpkgs/archive/master.tar.gz` }
+        });
+
+        child.stdout.on('data', (data) => log(data.toString().trim()));
+        child.stderr.on('data', (data) => log(`[WARN] ${data.toString().trim()}`));
+        
+        child.on('close', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`Nix installation of ${pkgName} failed with code ${code}`));
+        });
+      }).catch(err => log(`[ERROR] ${err.message}`));
+    }
+    log(`Environment synchronized successfully.`);
   }
 
   /**
    * Executes the 'onCreate' and 'onStart' hooks.
+   * ASYNCHRONOUS Spawning to prevent Blocking.
    */
-  static runHook(workspacePath: string, hookName: 'onCreate' | 'onStart', script: string, onLog?: (msg: string) => void) {
+  static async runHook(workspacePath: string, hookName: 'onCreate' | 'onStart', script: string, onLog?: (msg: string) => void): Promise<void> {
     const log = (msg: string) => { if (onLog) onLog(`[IDX:HOOK] ${hookName}: ${msg}`); };
     log(`Executing script...`);
 
-    try {
-      // Run the hook script in the workspace context
-      execSync(script, {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn('/bin/bash', ['-c', script], {
         cwd: workspacePath,
-        shell: '/bin/bash',
         env: { ...process.env, HOME: workspacePath }
       });
-      log(`Success.`);
-    } catch (e) {
-      log(`[ERROR] Hook failed with exit code 1.`);
-      console.error(e);
-    }
+
+      child.stdout.on('data', (data) => log(data.toString().trim()));
+      child.stderr.on('data', (data) => log(`[WARN] ${data.toString().trim()}`));
+      
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Hook ${hookName} failed with code ${code}`));
+      });
+    }).catch(err => log(`[ERROR] ${err.message}`));
   }
 }

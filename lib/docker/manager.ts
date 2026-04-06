@@ -4,6 +4,7 @@ import path from 'path';
 import Docker from 'dockerode';
 import { EventEmitter } from 'events';
 import { IdxEngine } from '../idx/idx-engine';
+import { HFStorage } from '../hf/storage';
 
 /**
  * Registry for native workspace processes (IDE instances running outside Docker)
@@ -113,6 +114,27 @@ export interface WorkspaceOperationResult {
     port?: string | number;
     appetizeUrl?: string;
     error?: string;
+    status?: 'hydrating' | 'ready';
+}
+
+/**
+ * PREDICTIVE HYDRATION: Pre-warms Nix profile and SDKs.
+ */
+export async function prewarmWorkspace(config: WorkspaceConfig): Promise<void> {
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(process.cwd(), 'workspaces');
+    const workspacePath = path.join(workspaceRoot, config.id);
+    
+    if (!fs.existsSync(workspacePath)) {
+        fs.mkdirSync(workspacePath, { recursive: true });
+    }
+
+    const idxConfig = IdxEngine.getIdxConfig(workspacePath);
+    if (idxConfig) {
+        // Run Nix sync and onCreate in background if not already warmed
+        IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => {
+            provisioningBus.emit(`log:${config.id}`, `[HYDRATE] ${msg}`);
+        });
+    }
 }
 
 /**
@@ -125,6 +147,10 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
     };
 
     log(`Provisioning hermetic environment for '${config.projectName}'...`);
+    
+    // 0. HF PERSISTENCE: Restore profile from Dataset if available
+    await HFStorage.syncFromDataset((msg) => log(msg));
+    HFStorage.startAutoSave(300000); // Start 5m auto-save loop
     
     // 1. Prepare Workspace Directory
     const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(process.cwd(), 'workspaces');
@@ -151,24 +177,24 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         log(`Baseline provisioned successfully.`);
     }
 
-    // 3. IDX Engine: Sync Environment
+    // 3. IDX Engine: Sync Environment (Async/Non-blocking)
     const idxConfig = IdxEngine.getIdxConfig(workspacePath);
     if (idxConfig) {
         log(`Declarative config detected. Initializing synchronization...`);
-        IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
+        await IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
         
         const flagPath = path.join(workspacePath, '.idx-created');
         if (!fs.existsSync(flagPath)) {
             if (idxConfig.onCreate) {
                 log(`Executing onCreate lifecycle hook...`);
-                IdxEngine.runHook(workspacePath, 'onCreate', idxConfig.onCreate, (msg) => log(msg));
+                await IdxEngine.runHook(workspacePath, 'onCreate', idxConfig.onCreate, (msg) => log(msg));
             }
             fs.writeFileSync(flagPath, new Date().toISOString());
         }
 
         if (idxConfig.onStart) {
             log(`Executing onStart lifecycle hook...`);
-            IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg));
+            await IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg));
         }
     }
 

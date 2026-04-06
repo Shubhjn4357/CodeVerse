@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { startWorkspaceContainer, stopWorkspaceContainer } from "@/lib/docker/manager";
+import { startWorkspaceContainer, stopWorkspaceContainer, prewarmWorkspace } from "@/lib/docker/manager";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 
@@ -107,6 +107,10 @@ export async function POST(req: Request) {
                 });
             }
             return NextResponse.json(result);
+        } else if (action === "prewarm") {
+            // FIRE AND FORGET: Hydrate the Nix store and Android SDKs
+            prewarmWorkspace({ id, userId: session.user.id, projectName }).catch(console.error);
+            return NextResponse.json({ success: true, status: 'hydrating' });
         }
 
         return NextResponse.json({ error: "Invalid action" }, { status: 400 });

@@ -162,40 +162,24 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
     }
 
-    // 2. AUTO-SETUP: Provide default .idx/dev.nix if missing
-    const idxDir = path.join(workspacePath, '.idx');
-    const devNixPath = path.join(idxDir, 'dev.nix');
-    if (!fs.existsSync(devNixPath)) {
-        log(`No declarative config found. Provisioning IDX baseline (.idx/dev.nix)...`);
-        if (!fs.existsSync(idxDir)) fs.mkdirSync(idxDir, { recursive: true });
-        const defaultNix = `{ pkgs, ... }: {
-  packages = [ pkgs.nodejs pkgs.go pkgs.python3 ];
-  onCreate = "npm install";
-  onStart = "npm run dev";
-}`;
-        fs.writeFileSync(devNixPath, defaultNix);
-        log(`Baseline provisioned successfully.`);
+    // 2. IDX Engine: Sync Environment (Async/Non-blocking)
+    const idxConfig = IdxEngine.getIdxConfig(workspacePath);
+    log(`Declarative config detected (Packages: ${idxConfig.packages.length}). Initializing synchronization...`);
+    
+    await IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
+    
+    const flagPath = path.join(workspacePath, '.idx-created');
+    if (!fs.existsSync(flagPath)) {
+        if (idxConfig.onCreate) {
+            log(`Executing onCreate lifecycle hook...`);
+            await IdxEngine.runHook(workspacePath, 'onCreate', idxConfig.onCreate, (msg) => log(msg));
+        }
+        fs.writeFileSync(flagPath, new Date().toISOString());
     }
 
-    // 3. IDX Engine: Sync Environment (Async/Non-blocking)
-    const idxConfig = IdxEngine.getIdxConfig(workspacePath);
-    if (idxConfig) {
-        log(`Declarative config detected. Initializing synchronization...`);
-        await IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
-        
-        const flagPath = path.join(workspacePath, '.idx-created');
-        if (!fs.existsSync(flagPath)) {
-            if (idxConfig.onCreate) {
-                log(`Executing onCreate lifecycle hook...`);
-                await IdxEngine.runHook(workspacePath, 'onCreate', idxConfig.onCreate, (msg) => log(msg));
-            }
-            fs.writeFileSync(flagPath, new Date().toISOString());
-        }
-
-        if (idxConfig.onStart) {
-            log(`Executing onStart lifecycle hook...`);
-            await IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg));
-        }
+    if (idxConfig.onStart) {
+        log(`Executing onStart lifecycle hook...`);
+        await IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg));
     }
 
     // 4. Identify Target Port

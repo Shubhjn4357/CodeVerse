@@ -3,10 +3,10 @@
 import { useSystemStatus } from "@/hooks/useSystemStatus";
 import { motion } from "framer-motion";
 import { 
-    Activity, Shield, Globe, Server, 
-    Cpu, MemoryStick as Memory, Clock, 
-    ArrowLeft, RefreshCw, AlertTriangle
+    Activity, Shield, Server, 
+    Clock, ArrowLeft, RefreshCw, AlertTriangle
 } from "lucide-react";
+import { DashboardVitals } from "@/components/DashboardVitals";
 import Link from "next/link";
 
 export default function SystemStatus() {
@@ -72,32 +72,9 @@ export default function SystemStatus() {
                     </div>
                 </div>
 
-                {/* Metrics Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-                    {/* CPU Load */}
-                    <MetricCard 
-                        icon={<Cpu className="text-blue-400" size={24} />}
-                        title="CPU Load"
-                        value={`${(status.system.loadAvg[0]).toFixed(2)}`}
-                        subtitle="1min average"
-                        extra={`${(status.system.loadAvg[1]).toFixed(2)} (5m) • ${(status.system.loadAvg[2]).toFixed(2)} (15m)`}
-                    />
-                    {/* Memory Usage */}
-                    <MetricCard 
-                        icon={<Memory className="text-purple-400" size={24} />}
-                        title="Memory (RSS)"
-                        value={status.memory.rss}
-                        subtitle={`Heap: ${status.memory.heapUsed} / ${status.memory.heapTotal}`}
-                        extra={`Free System: ${status.system.freeMem} / ${status.system.totalMem}`}
-                    />
-                    {/* Networking */}
-                    <MetricCard 
-                        icon={<Globe className="text-(--accent)" size={24} />}
-                        title="Connectivity"
-                        value={diagnostics.protocol.toUpperCase()}
-                        subtitle={`Host: ${diagnostics.host}`}
-                        extra={`IP: ${diagnostics.ip || "Direct Access"}`}
-                    />
+                {/* Infrastructure Vitals Monitor (2026 Studio Edition) */}
+                <div className="mb-10">
+                    <DashboardVitals />
                 </div>
 
                 {/* Two Column Section */}
@@ -152,26 +129,6 @@ export default function SystemStatus() {
                     </div>
                 </div>
             </motion.div>
-        </div>
-    );
-}
-
-function MetricCard({ icon, title, value, subtitle, extra }: { icon: React.ReactNode, title: string, value: string, subtitle: string, extra?: string }) {
-    return (
-        <div className="bg-(--surface) border border-(--border-subtle) p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all group scale-100 hover:scale-[1.02]">
-            <div className="flex items-center gap-4 mb-5">
-                <div className="w-12 h-12 rounded-2xl bg-(--bg) border border-(--border-subtle) flex items-center justify-center group-hover:border-(--accent)/50 transition-colors shadow-inner">
-                    {icon}
-                </div>
-                <h3 className="text-sm font-bold text-(--text-muted) uppercase tracking-widest">{title}</h3>
-            </div>
-            <div className="space-y-4">
-                <div className="text-3xl font-bold text-(--text) tracking-tight">{value}</div>
-                <div>
-                    <div className="text-sm font-medium text-(--text)">{subtitle}</div>
-                    {extra && <div className="text-xs text-(--text-muted) mt-1 font-mono opacity-80">{extra}</div>}
-                </div>
-            </div>
         </div>
     );
 }

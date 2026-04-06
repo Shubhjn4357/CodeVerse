@@ -6,7 +6,7 @@ import { spawn } from 'child_process';
  * Interface representing the .idx/dev.nix configuration.
  */
 export interface IdxConfig {
-  packages?: string[];
+  packages: string[];
   onCreate?: string;
   onStart?: string;
 }
@@ -17,11 +17,22 @@ export interface IdxConfig {
  */
 export class IdxEngine {
   /**
+   * Returns a robust baseline configuration for workspaces without a dev.nix.
+   */
+  static getDefaultConfig(): IdxConfig {
+    return {
+      packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker'],
+      onCreate: 'npm install',
+      onStart: 'npm run dev'
+    };
+  }
+
+  /**
    * Detects and parses the .idx/dev.nix file in the workspace root.
    */
-  static getIdxConfig(workspacePath: string): IdxConfig | null {
+  static getIdxConfig(workspacePath: string): IdxConfig {
     const configPath = path.join(workspacePath, '.idx', 'dev.nix');
-    if (!fs.existsSync(configPath)) return null;
+    if (!fs.existsSync(configPath)) return this.getDefaultConfig();
 
     try {
       const content = fs.readFileSync(configPath, 'utf8');
@@ -30,14 +41,19 @@ export class IdxEngine {
       const onCreateMatch = content.match(/onCreate\s*=\s*"{1,3}([\s\S]*?)"{1,3}/);
       const onStartMatch = content.match(/onStart\s*=\s*"{1,3}([\s\S]*?)"{1,3}/);
 
-      return {
+      const config = {
         packages: packagesMatch ? packagesMatch[1].split(/[\s\n,]+/).map(p => p.trim()).filter(p => p.length > 0) : [],
         onCreate: onCreateMatch ? onCreateMatch[1].trim() : undefined,
         onStart: onStartMatch ? onStartMatch[1].trim() : undefined
       };
+
+      // Ensure baseline safety
+      if (config.packages.length === 0) config.packages = this.getDefaultConfig().packages;
+      
+      return config;
     } catch (e) {
-      console.error(`[IDX-ENGINE] Failed to parse dev.nix:`, e);
-      return null;
+      console.warn(`[IDX-ENGINE] Failed to parse dev.nix, falling back to baseline:`, e);
+      return this.getDefaultConfig();
     }
   }
 

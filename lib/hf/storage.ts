@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
 
@@ -12,30 +12,49 @@ export class HFStorage {
     private static readonly WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/app/workspaces';
 
     /**
+     * Internal helper for asynchronous execution with logging.
+     */
+    private static async execAsync(command: string, onLog?: (msg: string) => void): Promise<void> {
+        return new Promise((resolve, reject) => {
+            const [cmd, ...args] = command.split(' ');
+            const child = spawn('/bin/bash', ['-c', command], {
+                env: { ...process.env, HF_TOKEN: this.HF_TOKEN }
+            });
+
+            child.stdout.on('data', (data) => onLog?.(data.toString().trim()));
+            child.stderr.on('data', (data) => onLog?.(`[WARN] ${data.toString().trim()}`));
+
+            child.on('close', (code) => {
+                if (code === 0) resolve();
+                else reject(new Error(`Command failed with code ${code}: ${command}`));
+            });
+        });
+    }
+
+    /**
      * Synchronizes the environment FROM the Hugging Face Dataset (Pull).
      */
     static async syncFromDataset(onLog?: (msg: string) => void): Promise<void> {
         if (!this.HF_TOKEN || !this.HF_DATASET_ID) {
-            onLog?.(`[HF:STORAGE] Persistence layer inactive. HF_TOKEN or HF_DATASET_ID missing.`);
+            onLog?.(`[HF:STORAGE] Persistence layer inactive. Missing credentials.`);
             return;
         }
 
         onLog?.(`[HF:STORAGE] Pulling persistent profile from '${this.HF_DATASET_ID}'...`);
         try {
-            // Using huggingface-cli to download the profile tarball
             const tmpDir = '/tmp/hf-sync';
             if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-            execSync(`huggingface-cli download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN}`);
+            await this.execAsync(`huggingface-cli download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN}`, onLog);
             
-            if (fs.existsSync(path.join(tmpDir, 'profile.tar.gz'))) {
+            const tarPath = path.join(tmpDir, 'profile.tar.gz');
+            if (fs.existsSync(tarPath)) {
                 onLog?.(`[HF:STORAGE] Restoring Nix profile...`);
-                execSync(`tar -xzf ${path.join(tmpDir, 'profile.tar.gz')} -C ${process.env.HOME || '/home/node'}`);
+                await this.execAsync(`tar -xzf ${tarPath} -C ${process.env.HOME || '/home/node'}`, onLog);
                 onLog?.(`[HF:STORAGE] Profile restored successfully.`);
             }
-        } catch (e) {
-            onLog?.(`[ERROR] Profile restoration failed. Starting with fresh environment.`);
-            console.error(e);
+        } catch (e: any) {
+            onLog?.(`[ERROR] Profile restoration failed: ${e.message}`);
         }
     }
 
@@ -50,15 +69,13 @@ export class HFStorage {
             const tmpDir = '/tmp/hf-sync';
             if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-            // Create a tarball of the .nix-profile
-            execSync(`tar -czf ${path.join(tmpDir, 'profile.tar.gz')} -C ${process.env.HOME || '/home/node'} .nix-profile`);
-
-            // Use huggingface-cli to upload
-            execSync(`huggingface-cli upload ${this.HF_DATASET_ID} ${tmpDir}/profile.tar.gz profile.tar.gz --token ${this.HF_TOKEN}`);
+            const tarPath = path.join(tmpDir, 'profile.tar.gz');
+            await this.execAsync(`tar -czf ${tarPath} -C ${process.env.HOME || '/home/node'} .nix-profile`, onLog);
+            await this.execAsync(`huggingface-cli upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN}`, onLog);
+            
             onLog?.(`[HF:STORAGE] Profile synchronized successfully.`);
-        } catch (e) {
-            onLog?.(`[ERROR] Profile synchronization failed.`);
-            console.error(e);
+        } catch (e: any) {
+            onLog?.(`[ERROR] Profile synchronization failed: ${e.message}`);
         }
     }
 

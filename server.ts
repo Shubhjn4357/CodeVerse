@@ -1,5 +1,4 @@
 import { createServer, IncomingMessage, ServerResponse } from "http";
-import { parse } from "url";
 import next from "next";
 import { Server } from "socket.io";
 import { WebSocketServer, WebSocket } from "ws";
@@ -13,8 +12,9 @@ import * as pty from "node-pty";
 import os from "os";
 import { Duplex } from "stream";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
-import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning } from "./lib/docker/manager";
+import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning, prewarmWorkspace } from "./lib/docker/manager";
 import { initDb } from "./lib/db/schema";
+import { validateEnvironment } from "./lib/env-config";
 import httpProxy from "http-proxy";
 
 const dev = process.env.NODE_ENV !== "production";
@@ -42,7 +42,6 @@ const proxy = httpProxy.createProxyServer({
 
 /**
  * Custom renderer for Proxy Errors and Booting screens.
- * Prevents ECONNREFUSED from showing a generic 502 to the user.
  */
 function renderProxyError(res: ServerResponse, error: string, id: string) {
     res.writeHead(502, { 'Content-Type': 'text/html' });
@@ -83,7 +82,6 @@ function renderProxyError(res: ServerResponse, error: string, id: string) {
 
 proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duplex) => {
     const host = req.headers.host || "";
-    // Modern URL API instead of deprecated url.parse
     const fullUrl = new URL(req.url || "/", `http://${host}`);
     const pathname = fullUrl.pathname;
     
@@ -120,32 +118,41 @@ proxy.on("proxyRes", (proxyRes, req) => {
 
 app.prepare()
   .then(() => {
-    initDb().catch(err => console.error("[BOOT] Database init failed:", err));
+    // Validate Production Environment
+    const envStatus = validateEnvironment();
+    if (!envStatus.valid) {
+        console.error("[CRITICAL] Infrastructure missing core secrets:", envStatus.missing.join(', '));
+        if (process.env.NODE_ENV === 'production') process.exit(1);
+    }
+
+    initDb()
+        .then(() => {
+            console.log("[BOOT] Database synchronized.");
+            prewarmWorkspace({ id: 'baseline-warmup', userId: 'system', projectName: 'CodeVerse-Internal' })
+                .catch(err => console.error("[BOOT] Warmup failed:", err));
+        })
+        .catch(err => console.error("[BOOT] Database init failed:", err));
+        
     startAutoSleepCron();
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
-        // Modern URL API usage
         const host = req.headers.host || "localhost";
         const fullUrl = new URL(req.url || "/", `http://${host}`);
         const { pathname } = fullUrl;
 
-        // Unified ID Detection for cold-start redirection
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
         const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);
 
         if (id) {
             if (!isNativeWorkspaceRunning(id)) {
-                console.log(`[COLD-START] Workspace ${id} not initialized. Redirecting to boot sequence...`);
                 res.writeHead(302, { Location: `/dashboard/booting?id=${id}` });
                 return res.end();
             }
 
-            // Real-time port resolution from orchestrator registry
             const port = getNativeWorkspacePort(id) || 8080;
             req.headers['x-codeverse-id'] = id;
             req.headers['x-codeverse-type'] = 'workspace';
             
-            // Rewrite URL for cleaner IDE interaction
             if (pathname?.startsWith("/workspace/")) {
                 req.url = "/" + pathname.split("/").slice(3).join("/");
             }
@@ -159,7 +166,18 @@ app.prepare()
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
 
-        // Final Next.js handler with modern URL context
+        if (pathname === "/api/stats") {
+            const stats = {
+                rss: process.memoryUsage().rss,
+                heapUsed: process.memoryUsage().heapUsed,
+                heapTotal: process.memoryUsage().heapTotal,
+                loadAvg: os.loadavg(),
+                uptime: process.uptime()
+            };
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(stats));
+        }
+
         handle(req, res);
     });
 
@@ -169,7 +187,7 @@ app.prepare()
     server.on("upgrade", (req: IncomingMessage, socket: Duplex, head: Buffer) => {
         const host = req.headers.host || "localhost";
         const fullUrl = new URL(req.url || "/", `http://${host}`);
-        const { pathname, searchParams } = fullUrl;
+        const { pathname } = fullUrl;
 
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
         const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);

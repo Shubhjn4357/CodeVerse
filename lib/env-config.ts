@@ -16,11 +16,12 @@ export const ENV_CONFIG = {
     NODE_ENV: process.env.NODE_ENV || 'production',
     SPACE_ID: process.env.SPACE_ID, // Hugging Face Space Identity
     APP_BASE_URL: process.env.NEXTAUTH_URL || 'http://localhost:7860',
+    IS_SBC: !!process.env.SPACE_ID, // Identity for Hugging Face Spaces
 
     // 4. Database & Auth
     AUTH_SECRET: process.env.AUTH_SECRET,
-    DATABASE_URL: process.env.TURSO_URL,
-    DATABASE_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
+    TURSO_URL: process.env.TURSO_URL,
+    TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN,
 };
 
 /**
@@ -28,15 +29,14 @@ export const ENV_CONFIG = {
  */
 export function validateEnvironment() {
     const missing: string[] = [];
-    if (!ENV_CONFIG.HF_TOKEN) missing.push('HF_TOKEN');
-    if (!ENV_CONFIG.HF_DATASET_ID) missing.push('HF_DATASET_ID');
-    if (!ENV_CONFIG.AUTH_SECRET) missing.push('AUTH_SECRET');
-    if (!ENV_CONFIG.DATABASE_URL) missing.push('TURSO_URL');
+    if (!ENV_CONFIG.HF_TOKEN) missing.push('HF_TOKEN (Missing Persistence Link)');
+    if (!ENV_CONFIG.HF_DATASET_ID) missing.push('HF_DATASET_ID (Missing Data Segment)');
+    if (!ENV_CONFIG.AUTH_SECRET) missing.push('AUTH_SECRET (Security Risk)');
+    if (!ENV_CONFIG.TURSO_URL) missing.push('TURSO_URL (Database Missing)');
 
     // Strategic Dataset Validation
     if (ENV_CONFIG.HF_DATASET_ID && !ENV_CONFIG.HF_DATASET_ID.includes('/')) {
-        console.error("[CRITICAL] HF_DATASET_ID must be in 'username/dataset' format.");
-        return { valid: false, missing: ['HF_DATASET_ID_FORMAT_ERROR'] };
+        return { valid: false, missing: ['HF_DATASET_ID_FORMAT_ERROR: Must be "username/dataset"'] };
     }
 
     return {

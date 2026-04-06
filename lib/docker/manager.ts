@@ -1,10 +1,13 @@
 import fs from 'fs';
+import { spawn, ChildProcess } from 'child_process';
+import path from 'path';
+import Docker from 'dockerode';
 
 /**
  * Registry for native workspace processes (IDE instances running outside Docker)
- * Map<workspaceId, { pid: number; port: number }>
+ * Map<workspaceId, { pid: number; port: number; process: ChildProcess }>
  */
-const nativeProcesses = new Map<string, { pid: number; port: number }>();
+const nativeProcesses = new Map<string, { pid: number; port: number; process: ChildProcess }>();
 
 /**
  * Checks if a native workspace is currently running.
@@ -19,16 +22,29 @@ export function isNativeWorkspaceRunning(id: string): boolean {
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 /**
+ * Finds an available port in the 8081-8099 range.
+ */
+function findAvailablePort(): number {
+    const occupiedPorts = Array.from(nativeProcesses.values()).map(p => p.port);
+    for (let port = 8081; port <= 8099; port++) {
+        if (!occupiedPorts.includes(port)) return port;
+    }
+    return Math.floor(Math.random() * (8999 - 8100) + 8100);
+}
+
+/**
  * Checks if Docker is available in the current environment.
  */
-export async function isDockerAvailable(): Promise<boolean> {
+export async function isDockerAvailable(): Promise<{ available: boolean; reason?: string }> {
     const socketPath = process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock';
+    if (process.env.SPACE_ID) return { available: false, reason: "Hugging Face Space (Sandboxed)" };
+    if (!fs.existsSync(socketPath)) return { available: false, reason: "Docker socket missing" };
     try {
-        if (fs.existsSync(socketPath)) return true;
-        if (process.env.SPACE_ID) return false; 
-        return false;
+        const docker = new Docker({ socketPath: process.platform === 'win32' ? undefined : socketPath });
+        await docker.ping();
+        return { available: true };
     } catch {
-        return false;
+        return { available: false, reason: "Docker daemon unreachable" };
     }
 }
 
@@ -36,14 +52,14 @@ export async function isDockerAvailable(): Promise<boolean> {
  * Stops a native workspace process.
  */
 export async function stopNativeWorkspace(id: string): Promise<boolean> {
-    const proc = nativeProcesses.get(id);
-    if (proc) {
+    const entry = nativeProcesses.get(id);
+    if (entry) {
         try {
-            if (proc.pid > 0) process.kill(proc.pid);
+            entry.process.kill();
             nativeProcesses.delete(id);
             return true;
         } catch (e) {
-            console.error(`Failed to kill process ${proc.pid}:`, e);
+            console.error(`[MANAGER] Failed to kill code-server ${entry.pid}:`, e);
             nativeProcesses.delete(id);
         }
     }
@@ -87,52 +103,104 @@ export interface WorkspaceOperationResult {
 }
 
 /**
- * Workspace provisioner with granular progress tracking for the terminal UI.
+ * Workspace provisioner with REAL child-process orchestration.
+ * Robust handshake and error handling to prevent "Deployment Engine Failure".
  */
 export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<WorkspaceOperationResult> {
     const log = (msg: string) => { if (config.onLog) config.onLog(`[MANAGER] ${msg}`); };
+
+    if (nativeProcesses.has(config.id)) {
+        log(`Workspace detected. Re-establishing secure proxy link...`);
+        return {
+            success: true,
+            containerId: `native-${config.id}`,
+            port: nativeProcesses.get(config.id)!.port
+        };
+    }
+
+    log(`Provisioning real-time isolation for '${config.projectName}'...`);
     
-    log(`Initializing Provisioning Sequence for '${config.projectName}'...`);
-    await delay(300);
-
-    const dockerReal = await isDockerAvailable();
-    if (dockerReal) {
-        log(`Docker daemon detected. Attempting to pull baseline images...`);
-        await delay(500);
-        // Real Docker logic here (skipped for mock mode)
-    } else {
-        log(`Restricted environment detected. Reverting to Native Isolation...`);
-        await delay(400);
+    // 1. Prepare Workspace Directory
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(process.cwd(), 'workspaces');
+    const workspacePath = path.join(workspaceRoot, config.id);
+    const userDataPath = path.join(workspacePath, '.vscode-server');
+    
+    if (!fs.existsSync(workspacePath)) {
+        fs.mkdirSync(workspacePath, { recursive: true });
+        log(`Created isolated filesystem segment: ${config.id.slice(0, 8)}`);
     }
 
-    log(`Allocating system resources for context isolation...`);
-    await delay(600);
+    // 2. Identify Target Port
+    const port = findAvailablePort();
+    log(`Assigned dynamic port: ${port}`);
 
-    log(`Setting up virtual filesystem mount in /app/workspaces/${config.id}...`);
-    await delay(800);
+    // 3. Spawn Real code-server Process (Linux priority)
+    const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
+    const args = process.platform === 'win32' ? ['code-server'] : [];
+    
+    const baseArgs = [
+        '--auth', 'none',
+        '--bind-addr', `127.0.0.1:${port}`,
+        '--user-data-dir', userDataPath,
+        '--disable-telemetry',
+        '--disable-update-check',
+        workspacePath
+    ];
 
-    log(`Verifying workspace integrity...`);
-    await delay(500);
+    const child = spawn(shellCommand, [...args, ...baseArgs], {
+        env: { ...process.env, HOME: workspacePath },
+        cwd: workspacePath,
+        shell: process.platform === 'win32'
+    });
 
-    if (!nativeProcesses.has(config.id)) {
-        log(`Spawning workspace proxy on 127.0.0.1:8080...`);
-        nativeProcesses.set(config.id, { pid: process.pid, port: 8080 });
-        await delay(1000); // Simulate boot-up time of the editor
-    } else {
-        log(`Workspace process already warm. Re-attaching to existing proxy...`);
-        await delay(400);
+    log(`Spawning VS Code Orchestrator (PID: ${child.pid})...`);
+
+    // Handle startup errors early
+    child.on('error', (err) => {
+        log(`[FATAL] Failed to launch IDE binary: ${err.message}`);
+    });
+
+    child.stdout.on('data', (data) => {
+        const out = data.toString();
+        if (out.includes('listening on')) log(`[UP] ${out.trim()}`);
+    });
+
+    child.stderr.on('data', (data) => {
+        const err = data.toString();
+        if (err.toLowerCase().includes('error')) log(`[STDERR] ${err.trim()}`);
+    });
+
+    // 4. Register in active pool
+    nativeProcesses.set(config.id, { pid: child.pid!, port, process: child });
+
+    // 5. Robust Handshake Loop (Increased attempts + explicit error on failure)
+    let attempts = 0;
+    while (attempts < 15) {
+        try {
+            const res = await fetch(`http://127.0.0.1:${port}`);
+            if (res.ok) {
+                log(`Handshake verified. CodeVerse Engine Online.`);
+                return {
+                    success: true,
+                    containerId: `native-${config.id}`,
+                    androidPort: config.withAndroidEmulator ? 6080 : undefined,
+                    port: port
+                };
+            }
+        } catch {
+            await delay(1000);
+            attempts++;
+            if (attempts % 3 === 0) log(`Warming up IDE core (attempt ${attempts}/15)...`);
+        }
     }
 
-    log(`Handshaking with system orchestrator...`);
-    await delay(300);
-
-    log(`Workspace Successfully Provisioned. Redirecting...`);
+    // Failure Case
+    log(`[FATAL] IDE core failed to respond on 127.0.0.1:${port} after 15 attempts.`);
+    stopNativeWorkspace(config.id);
     
     return {
-        success: true,
-        containerId: `native-${config.id}`,
-        androidPort: config.withAndroidEmulator ? 6080 : undefined,
-        port: 8080
+        success: false,
+        error: "IDE_HANDSHAKE_TIMEOUT: The orchestration layer failed to reach the IDE process. Check resource limits on Hugging Face."
     };
 }
 

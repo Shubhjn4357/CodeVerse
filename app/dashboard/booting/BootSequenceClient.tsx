@@ -13,68 +13,81 @@ export default function BootSequenceClient() {
     const [logs, setLogs] = useState<string[]>([]);
     const [status, setStatus] = useState<"booting" | "ready" | "error">("booting");
     const endRef = useRef<HTMLDivElement>(null);
+    const eventSourceRef = useRef<EventSource | null>(null);
+
+    // Stable log handler to avoid triggering synchronous re-renders in boot()
+    const addLog = useCallback((msg: string) => {
+        setLogs(prev => {
+            if (prev.includes(msg)) return prev;
+            return [...prev, msg];
+        });
+    }, []);
 
     const boot = useCallback(() => {
         if (!id) {
-            setLogs(["ERROR: No workspace ID provided."]);
+            addLog("ERROR: No workspace ID provided.");
             setStatus("error");
             return;
         }
 
+        // Close any existing connection before starting a new one
+        if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+        }
+
+        // We use a functional approach to initializing state to avoid synchronous cascade warnings
         setStatus("booting");
         setLogs([]);
 
-        // Initialize Real-Time SSE Stream for workspace initialization
         const eventSource = new EventSource(`/api/workspace/stream?id=${id}&withAndroid=${withAndroid}`);
+        eventSourceRef.current = eventSource;
 
         eventSource.addEventListener("log", (event) => {
-            const msg = event.data;
-            setLogs(prev => [...prev, msg]);
+            addLog(event.data);
         });
 
         eventSource.addEventListener("ready", (event) => {
             try {
-                JSON.parse(event.data);
-                setLogs(prev => [...prev, "[SYSTEM] Workspace Online. Handshake complete."]);
-                setStatus("ready");
-                
-                // Redirect to workspace after a brief success confirmation
-                setTimeout(() => {
+                const data = JSON.parse(event.data);
+                if (data.success === false) {
+                    addLog(`[FATAL] ${data.error || "Provisioning failed."}`);
+                    setStatus("error");
+                } else {
+                    addLog("[SYSTEM] Workspace Online. Handshake complete.");
+                    setStatus("ready");
+                    
+                    // Redirect immediately for performance
                     router.push(`/?workspace=${encodeURIComponent(id)}`);
-                }, 1000);
+                }
             } catch (e) {
                 console.error("Failed to parse ready event:", e);
                 setStatus("error");
             } finally {
-                eventSource.close();
+                if (eventSourceRef.current) {
+                    eventSourceRef.current.close();
+                    eventSourceRef.current = null;
+                }
             }
         });
 
         eventSource.addEventListener("error", (event) => {
             try {
-                const errData = JSON.parse((event as MessageEvent).data);
-                setLogs(prev => [...prev, `[FATAL] ${errData.message || "Unknown stream error."}`]);
+                const data = (event as MessageEvent).data;
+                const errData = data ? JSON.parse(data) : {};
+                addLog(`[FATAL] ${errData.message || "The deployment engine encountered an unexpected interruption."}`);
             } catch {
-                setLogs(prev => [...prev, "[FATAL] The boot stream was interrupted unexpectedly."]);
+                console.warn("Retrying SSE connection via EventSource auto-reconnect...");
             }
-            setStatus("error");
-            eventSource.close();
         });
 
-        // Basic error handler for connection issues
-        eventSource.onerror = () => {
-            setLogs(prev => {
-                if (prev.length > 0 && prev[prev.length - 1].startsWith("[FATAL]")) return prev;
-                return [...prev, "[FATAL] Lost connection to the provisioning engine."];
-            });
-            setStatus("error");
-            eventSource.close();
-        };
-
         return () => {
-            eventSource.close();
+            if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+                eventSourceRef.current = null;
+            }
         };
-    }, [id, withAndroid, router]);
+    }, [id, withAndroid, router, addLog]);
 
     useEffect(() => {
         const cleanup = boot();
@@ -90,14 +103,14 @@ export default function BootSequenceClient() {
     return (
         <div className="flex flex-col gap-5">
             {/* Terminal Log */}
-            <div className="bg-[#0a0a0a] rounded-xl p-4 min-h-[300px] border border-[#222] shadow-[inset_0_0_30px_rgba(0,0,0,0.6)] overflow-y-auto font-mono text-sm h-[400px]">
+            <div className="bg-[#0a0a0a] rounded-xl p-4 min-h-[300px] border border-[#222] shadow-[inset_0_0_30px_rgba(0,0,0,0.6)] overflow-y-auto font-mono text-sm h-[450px]">
                 {logs.map((log, i) => (
                     <div key={i} className="mb-1 leading-relaxed">
-                        {log.startsWith("[ERROR]") || log.startsWith("[FATAL]") ? (
+                        {log.startsWith("[ERROR]") || log.startsWith("[FATAL]") || log.startsWith("[STDERR]") ? (
                             <span className="text-red-400">{log}</span>
                         ) : log.includes("Ready") || log.includes("Online") || log.includes("success") || log.includes("complete") ? (
                             <span className="text-green-400">{log}</span>
-                        ) : log.startsWith("[SYSTEM]") || log.startsWith("[MANAGER]") ? (
+                        ) : log.startsWith("[SYSTEM]") || log.startsWith("[MANAGER]") || log.startsWith("[IDE-MANAGER]") || log.startsWith("[UP]") ? (
                             <span className="text-blue-400">{log}</span>
                         ) : (
                             <span className="text-zinc-500">{log}</span>
@@ -108,19 +121,19 @@ export default function BootSequenceClient() {
                 {status === "booting" && (
                     <div className="flex items-center gap-2 mt-4 text-green-400">
                         <Loader2 size={14} className="animate-spin" />
-                        <span className="text-sm font-semibold animate-pulse">Establishing container link...</span>
+                        <span className="text-sm font-semibold animate-pulse">Synchronizing orchestration layers...</span>
                     </div>
                 )}
                 {status === "ready" && (
                     <div className="flex items-center gap-2 mt-4 text-green-400">
                         <CheckCircle2 size={14} />
-                        <span className="text-sm font-semibold">Boot successful! Redirecting...</span>
+                        <span className="text-sm font-semibold">Deployment Successful. Redirecting...</span>
                     </div>
                 )}
                 {status === "error" && (
                     <div className="flex items-center gap-2 mt-4 text-red-500">
                         <XCircle size={14} />
-                        <span className="text-sm font-semibold">Boot sequence interrupted.</span>
+                        <span className="text-sm font-semibold">Deployment Engine Stalled.</span>
                     </div>
                 )}
                 <div ref={endRef} />
@@ -134,7 +147,7 @@ export default function BootSequenceClient() {
                         className="flex items-center gap-2 px-4 py-2 bg-[#161b22] hover:bg-[#21262d] text-zinc-300 hover:text-white rounded-lg text-sm transition-all border border-[#30363d] hover:border-[#444]"
                     >
                         <ArrowLeft size={14} />
-                        Abort Boot
+                        Back to Dashboard
                     </button>
                     <button
                         onClick={() => boot()}

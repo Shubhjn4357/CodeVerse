@@ -4,6 +4,7 @@ FROM node:20-bookworm-slim AS base
 
 # Install build tools and compatibility layers for native modules (node-pty)
 # Also add code-server for Native Isolation Mode (when Docker is missing)
+# And the real implementation of Docker, Android, X11, and Desktop bridge
 RUN apt-get update && apt-get install -y \
     libc6 \
     libstdc++6 \
@@ -14,11 +15,33 @@ RUN apt-get update && apt-get install -y \
     curl \
     ca-certificates \
     tar \
+    unzip \
+    openjdk-17-jdk \
+    xvfb \
+    fluxbox \
+    novnc \
+    websockify \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libgtk-3-0 \
+    # Docker Client and Daemon (for build-time environment availability)
+    docker.io \
     && rm -rf /var/lib/apt/lists/* \
     && curl -fL https://github.com/coder/code-server/releases/download/v4.96.2/code-server-4.96.2-linux-amd64.tar.gz \
     | tar -C /usr/local/lib -xz \
     && mv /usr/local/lib/code-server-4.96.2-linux-amd64 /usr/local/lib/code-server \
     && ln -s /usr/local/lib/code-server/bin/code-server /usr/local/bin/code-server
+
+# Install Android SDK Command Line Tools
+ENV ANDROID_SDK_ROOT /app/android-sdk
+RUN mkdir -p ${ANDROID_SDK_ROOT}/cmdline-tools \
+    && curl -fL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o cmdline-tools.zip \
+    && unzip cmdline-tools.zip -d ${ANDROID_SDK_ROOT}/cmdline-tools \
+    && mv ${ANDROID_SDK_ROOT}/cmdline-tools/cmdline-tools ${ANDROID_SDK_ROOT}/cmdline-tools/latest \
+    && rm cmdline-tools.zip
+
+ENV PATH ${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROOT}/platform-tools
 
 # Step 1. Rebuild the source code only when needed
 FROM base AS builder

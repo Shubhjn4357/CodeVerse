@@ -31,7 +31,7 @@ export class IdxEngine {
    * Detects and parses the .idx/dev.nix file in the workspace root.
    */
   static getIdxConfig(workspacePath: string): IdxConfig {
-    const configPath = path.join(workspacePath, '.idx', 'dev.nix');
+    const configPath = path.join(/*turbopackIgnore: true*/ workspacePath, '.idx', 'dev.nix');
     if (!fs.existsSync(configPath)) return this.getDefaultConfig();
 
     try {

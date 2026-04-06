@@ -32,7 +32,7 @@ const WORKSPACE_BASE = resolveWorkspaceBase();
  * e.g., /path/to/codeverse/workspaces/{userId}
  */
 export async function getUserWorkspaceRoot(userId: string): Promise<string> {
-    const userRoot = path.join(WORKSPACE_BASE, userId);
+    const userRoot = path.join(/*turbopackIgnore: true*/ WORKSPACE_BASE, userId);
     try {
         await fs.mkdir(userRoot, { recursive: true });
     } catch (e: unknown) {
@@ -50,10 +50,10 @@ export async function getUserWorkspaceRoot(userId: string): Promise<string> {
  */
 export async function resolveSafeProjectPath(userId: string, projectName: string, subPath: string = ""): Promise<string> {
     const userRoot = await getUserWorkspaceRoot(userId);
-    const projectRoot = path.resolve(userRoot, projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60));
+    const projectRoot = path.resolve(/*turbopackIgnore: true*/ userRoot, projectName.replace(/[^a-zA-Z0-9-_]/g, "-").slice(0, 60));
     
     // Normalize and resolve the absolute path
-    const targetPath = path.resolve(projectRoot, subPath);
+    const targetPath = path.resolve(/*turbopackIgnore: true*/ projectRoot, subPath);
 
     // Security Check: Ensure the resolved path is still within the project root
     if (!targetPath.startsWith(projectRoot)) {
@@ -70,7 +70,7 @@ export async function resolveSafePath(userId: string, subPath: string): Promise<
     const userRoot = await getUserWorkspaceRoot(userId);
     
     // Normalize and resolve the absolute path
-    const targetPath = path.resolve(userRoot, subPath);
+    const targetPath = path.resolve(/*turbopackIgnore: true*/ userRoot, subPath);
 
     // Security Check: Ensure the resolved path is still within the user's root
     if (!targetPath.startsWith(userRoot)) {

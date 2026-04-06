@@ -131,7 +131,7 @@ export async function prewarmWorkspace(config: WorkspaceConfig): Promise<void> {
     const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
     
     if (!fs.existsSync(workspacePath)) {
-        fs.mkdirSync(workspacePath, { recursive: true });
+        fs.mkdirSync(/*turbopackIgnore: true*/ workspacePath, { recursive: true });
     }
 
     const idxConfig = IdxEngine.getIdxConfig(workspacePath);
@@ -164,7 +164,7 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
     const userDataPath = path.join(/*turbopackIgnore: true*/ workspacePath, '.vscode-server');
     
     if (!fs.existsSync(workspacePath)) {
-        fs.mkdirSync(workspacePath, { recursive: true });
+        fs.mkdirSync(/*turbopackIgnore: true*/ workspacePath, { recursive: true });
         log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
     }
 
@@ -174,7 +174,7 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
     
     await IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
     
-    const flagPath = path.join(workspacePath, '.idx-created');
+    const flagPath = path.join(/*turbopackIgnore: true*/ workspacePath, '.idx-created');
     if (!fs.existsSync(flagPath)) {
         if (idxConfig.onCreate) {
             log(`Executing onCreate lifecycle hook...`);
@@ -183,10 +183,9 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         fs.writeFileSync(flagPath, new Date().toISOString());
     }
 
-    if (idxConfig.onStart) {
-        log(`Executing onStart lifecycle hook...`);
-        // ONSTART HOOKS MUST BE BACKGROUND: They typically start servers (npm run dev) and never exit.
-        await IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg), true);
+    if (idxConfig.onCreate) {
+        log(`Executing onCreate lifecycle hook...`);
+        await IdxEngine.runHook(workspacePath, 'onCreate', idxConfig.onCreate, (msg) => log(msg));
     }
 
     // 4. Identify Target Port
@@ -224,11 +223,18 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
 
     // 7. Handshake Loop
     let attempts = 0;
-    while (attempts < 15) {
+    while (attempts < 60) {
         try {
             const res = await fetch(`http://127.0.0.1:${port}`);
             if (res.ok) {
                 log(`Handshake verified. Studio Engine Online.`);
+
+                // 🟢 PRIORITY SHIFT: Start hooks ONLY AFTER the IDE is confirmed ready
+                if (idxConfig.onStart) {
+                    log(`Executing background onStart lifecycle hooks...`);
+                    IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg), true);
+                }
+
                 const finalResult = {
                     success: true,
                     containerId: `native-${config.id}`,
@@ -239,9 +245,9 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
                 return finalResult;
             }
         } catch {
-            if (attempts % 3 === 0) log(`[INFO] Scanning for IDE heartbeat... (Attempt ${attempts}/15)`);
-            if (attempts === 5) log(`[INFO] Nix evaluation in progress. Cold boot detected.`);
-            if (attempts === 10) log(`[WARN] Handshake threshold approaching. IDE core high load.`);
+            if (attempts % 5 === 0) log(`[INFO] Scanning for IDE heartbeat... (Attempt ${attempts}/60)`);
+            if (attempts === 15) log(`[INFO] Nix evaluation in progress. Cold boot detected.`);
+            if (attempts === 45) log(`[WARN] Handshake threshold approaching. IDE core high load.`);
             await delay(1000);
             attempts++;
         }

@@ -40,10 +40,12 @@ const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
  */
 function findAvailablePort(): number {
     const occupiedPorts = Array.from(nativeProcesses.values()).map(p => p.port);
-    for (let port = 8080; port <= 8099; port++) {
-        if (!occupiedPorts.includes(port)) return port;
+    // Start from a higher random range to avoid system port 8080 conflicts
+    let port = Math.floor(Math.random() * (9000 - 8100) + 8100);
+    while (occupiedPorts.includes(port)) {
+        port = Math.floor(Math.random() * (9000 - 8100) + 8100);
     }
-    return Math.floor(Math.random() * (8999 - 8100) + 8100);
+    return port;
 }
 
 /**
@@ -214,8 +216,18 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
 
     child.on('error', (err) => log(`[FATAL] IDE binary failure: ${err.message}`));
     child.stdout.on('data', (data) => {
-        const out = data.toString();
-        if (out.includes('listening on')) log(`[IDX:UP] ${out.trim()}`);
+        const out = data.toString().trim();
+        if (out.includes('listening on')) log(`[IDX:UP] ${out}`);
+        else if (out.length > 0) log(`[IDE:CORE] ${out}`);
+    });
+
+    child.stderr.on('data', (data) => {
+        const err = data.toString().trim();
+        if (err.length > 0) log(`[IDE:ERR] ${err}`);
+    });
+
+    child.on('close', (code, signal) => {
+        log(`[IDE:EXIT] IDE process died with code ${code} (Signal: ${signal})`);
     });
 
     // 6. Register in active pool

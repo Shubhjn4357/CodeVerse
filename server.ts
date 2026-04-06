@@ -154,20 +154,21 @@ app.prepare()
         const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);
 
         if (id) {
-            if (!isNativeWorkspaceRunning(id)) {
-                res.writeHead(302, { Location: `/dashboard/booting?id=${id}` });
-                return res.end();
+            // PROXY LOGIC (April 2026): Only proxy if not a main dashboard request.
+            // Removed 302 redirect to prevent the 'Inside-Iframe Loop'.
+            const isReady = isNativeWorkspaceRunning(id);
+            if (isReady) {
+                const port = getNativeWorkspacePort(id) || 8080;
+                req.headers['x-codeverse-id'] = id;
+                req.headers['x-codeverse-type'] = 'workspace';
+                
+                if (pathname?.startsWith("/workspace/")) {
+                    req.url = "/" + pathname.split("/").slice(3).join("/");
+                }
+                
+                return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
             }
-
-            const port = getNativeWorkspacePort(id) || 8080;
-            req.headers['x-codeverse-id'] = id;
-            req.headers['x-codeverse-type'] = 'workspace';
-            
-            if (pathname?.startsWith("/workspace/")) {
-                req.url = "/" + pathname.split("/").slice(3).join("/");
-            }
-            
-            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
+            // Fallthrough to Next.js handler if not ready
         }
 
         if (pathname?.startsWith("/android/")) {

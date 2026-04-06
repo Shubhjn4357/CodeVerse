@@ -31,6 +31,15 @@ export function isNativeWorkspaceRunning(id: string): boolean {
 }
 
 /**
+ * Returns the current runtime status of a workspace.
+ */
+export function getWorkspaceStatus(id: string): "ready" | "provisioning" | "offline" {
+    if (nativeProcesses.has(id)) return "ready";
+    if (pendingProvisioning.has(id)) return "provisioning";
+    return "offline";
+}
+
+/**
  * Helper for async delays.
  */
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));

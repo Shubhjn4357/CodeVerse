@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Loader2, ServerCrash, Smartphone } from "lucide-react";
 import { EmulatorPane } from "./EmulatorPane";
 import { useEmulator } from "@/hooks/useEmulator";
-import { Loader2, ServerCrash, Smartphone } from "lucide-react";
 
 interface VSCodeFrameProps {
     workspaceId: string;
@@ -18,53 +18,79 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
     const emulator = useEmulator("android");
 
     useEffect(() => {
-        const events = new EventSource(`/api/workspace/stream?id=${workspaceId}&withAndroid=true`);
+        let isMounted = true;
 
-        const handleLog = (e: Event) => {
-            const me = e as MessageEvent;
+        const checkStatus = async () => {
             try {
-                const msg = JSON.parse(me.data);
-                setBuildLogs((prev) => [...prev, msg]);
-            } catch {
-                setBuildLogs((prev) => [...prev, me.data]);
-            }
-        };
-
-        const handleReady = (e: Event) => {
-            const me = e as MessageEvent;
-            try {
-                const data = JSON.parse(me.data);
-                if (data.success) {
-                    if (data.appetizeUrl) setAppetizeUrl(data.appetizeUrl);
-                    if (data.androidPort) {
-                        setAndroidPort(data.androidPort);
-                        emulator.setIsOpen(true);
-                    }
-                    setTimeout(() => setStatus("ready"), 1500);
-                } else {
-                    setStatus("error");
+                const res = await fetch(`/api/workspace/status?id=${workspaceId}`);
+                const data = await res.json();
+                if (data.ready && isMounted) {
+                    setStatus("ready");
+                    return true;
                 }
-            } catch (e: unknown) {
-                console.error(`[WATCHDOG:ERR] ${e instanceof Error ? e.message : String(e)}`);
+            } catch (e) {
+                console.error("Status probe failed:", e);
             }
-            events.close();
+            return false;
         };
 
-        const handleError = () => {
-            setStatus("error");
-            events.close();
+        const init = async () => {
+            const isReady = await checkStatus();
+            if (isReady || !isMounted) return;
+
+            const events = new EventSource(`/api/workspace/stream?id=${workspaceId}&withAndroid=true`);
+
+            const handleLog = (e: Event) => {
+                if (!isMounted) return;
+                const me = e as MessageEvent;
+                try {
+                    const msg = JSON.parse(me.data);
+                    setBuildLogs((prev) => [...prev, msg]);
+                } catch {
+                    setBuildLogs((prev) => [...prev, me.data]);
+                }
+            };
+
+            const handleReady = (e: Event) => {
+                if (!isMounted) return;
+                const me = e as MessageEvent;
+                try {
+                    const data = JSON.parse(me.data);
+                    if (data.success) {
+                        if (data.appetizeUrl) setAppetizeUrl(data.appetizeUrl);
+                        if (data.androidPort) {
+                            setAndroidPort(data.androidPort);
+                            emulator.setIsOpen(true);
+                        }
+                        setStatus("ready"); // Instant ready instead of 1.5s delay
+                    } else {
+                        setStatus("error");
+                    }
+                } catch (e: unknown) {
+                    console.error(`[WATCHDOG:ERR] ${e instanceof Error ? e.message : String(e)}`);
+                }
+                events.close();
+            };
+
+            const handleError = () => {
+                if (isMounted) setStatus("error");
+                events.close();
+            };
+
+            events.addEventListener("log", handleLog);
+            events.addEventListener("ready", handleReady);
+            events.addEventListener("error", handleError);
+
+            return () => {
+                events.removeEventListener("log", handleLog);
+                events.removeEventListener("ready", handleReady);
+                events.removeEventListener("error", handleError);
+                events.close();
+            };
         };
 
-        events.addEventListener("log", handleLog);
-        events.addEventListener("ready", handleReady);
-        events.addEventListener("error", handleError);
-
-        return () => {
-            events.removeEventListener("log", handleLog);
-            events.removeEventListener("ready", handleReady);
-            events.removeEventListener("error", handleError);
-            events.close();
-        };
+        init();
+        return () => { isMounted = false; };
     }, [workspaceId, emulator]);
 
     if (status === "loading") {

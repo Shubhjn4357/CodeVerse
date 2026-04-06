@@ -38,51 +38,69 @@ export default function BootSequenceClient() {
         setStatus("booting");
         setLogs([]);
 
-        // 🟢 TRIGGER: Explicitly start the workspace via POST
-        fetch("/api/workspace", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ action: "start", id, withAndroidEmulator: withAndroid })
-        }).catch(err => addLog(`[IDX:ERR] Failed to initiate launch: ${err.message}`));
-
-        const eventSource = new EventSource(`/api/workspace/stream?id=${id}&withAndroid=${withAndroid}`);
-        eventSourceRef.current = eventSource;
-
-        eventSource.addEventListener("log", (event) => {
-            addLog(event.data);
-        });
-
-        eventSource.addEventListener("ready", (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.success === false) {
-                    addLog(`[IDX:ERR] Engine failure: ${data.error || "Unknown"}`);
-                    setStatus("error");
-                } else {
-                    addLog("[IDX:APP] Studio Engine Online. Synchronized.");
+        // Check immediate status first
+        fetch(`/api/workspace/status?id=${id}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === "ready") {
                     setStatus("ready");
                     router.push(`/?workspace=${encodeURIComponent(id)}`);
-                }
-            } catch (e) {
-                console.error("Failed to parse ready event:", e);
-                setStatus("error");
-            } finally {
-                if (eventSourceRef.current) {
-                    eventSourceRef.current.close();
-                    eventSourceRef.current = null;
-                }
-            }
-        });
+                } else {
+                    // Proceed with boot if not ready
+                    fetch("/api/workspace", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ action: "start", id, withAndroidEmulator: withAndroid })
+                    }).catch(err => addLog(`[IDX:ERR] Failed to initiate launch: ${err.message}`));
 
-        eventSource.addEventListener("error", (event) => {
-            try {
-                const data = (event as MessageEvent).data;
-                const errData = data ? JSON.parse(data) : {};
-                addLog(`[IDX:CRT] ${errData.message || "Environment connection broken."}`);
-            } catch {
-                console.warn("Retrying SSE via IDX-Bus...");
-            }
-        });
+                    const eventSource = new EventSource(`/api/workspace/stream?id=${id}&withAndroid=${withAndroid}`);
+                    eventSourceRef.current = eventSource;
+
+                    eventSource.addEventListener("log", (event) => {
+                        addLog(event.data);
+                    });
+
+                    eventSource.addEventListener("ready", (event) => {
+                        try {
+                            const data = JSON.parse(event.data);
+                            if (data.success === false) {
+                                addLog(`[IDX:ERR] Engine failure: ${data.error || "Unknown"}`);
+                                setStatus("error");
+                            } else {
+                                addLog("[IDX:APP] Studio Engine Online. Synchronized.");
+                                setStatus("ready");
+                                if (eventSourceRef.current) {
+                                    eventSourceRef.current.close();
+                                    eventSourceRef.current = null;
+                                }
+                                router.push(`/?workspace=${encodeURIComponent(id)}`);
+                            }
+                        } catch (e) {
+                            console.error("Failed to parse ready event:", e);
+                            setStatus("error");
+                        } finally {
+                            if (eventSourceRef.current) {
+                                eventSourceRef.current.close();
+                                eventSourceRef.current = null;
+                            }
+                        }
+                    });
+
+                    eventSource.addEventListener("error", (event) => {
+                        try {
+                            const data = (event as MessageEvent).data;
+                            const errData = data ? JSON.parse(data) : {};
+                            addLog(`[IDX:CRT] ${errData.message || "Environment connection broken."}`);
+                        } catch {
+                            console.warn("Retrying SSE via IDX-Bus...");
+                        }
+                    });
+                }
+            })
+            .catch(() => {
+                setStatus("error");
+                addLog("[IDX:ERR] Failed to probe workspace status.");
+            });
 
         return () => {
             if (eventSourceRef.current) {

@@ -3,10 +3,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import {
     Plus, FolderOpen, Star, Search, ChevronDown,
     X, Globe, LayoutTemplate, Terminal, Loader2, Check,
-    AlertCircle, Code2, Zap, Power, User, Trash2, MoreVertical, ExternalLink
+    AlertCircle, Code2, Zap, Power, User, Trash2, MoreVertical, ExternalLink,
+    Activity
 } from "lucide-react";
 import { TEMPLATE_REGISTRY } from "@/constants/extensions";
 import Image from "next/image";
@@ -187,6 +189,14 @@ export default function Dashboard() {
                             </DropdownMenu.Content>
                         </DropdownMenu.Portal>
                     </DropdownMenu.Root>
+                    <Link 
+                        href="/dashboard/system" 
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-(--bg-2) border border-(--border-subtle) hover:border-(--accent)/50 text-(--text-muted) hover:text-(--text) transition-all group outline-none"
+                        title="Platform Observability"
+                    >
+                        <Activity size={14} className="text-(--accent) group-hover:scale-110 transition-transform" />
+                        <span className="text-[11px] font-bold uppercase tracking-widest hidden sm:inline">Status</span>
+                    </Link>
                     <div className="h-4 w-px bg-(--border)" />
                     <div className="flex items-center gap-3 pl-1">
                         <div className="flex flex-col items-end">

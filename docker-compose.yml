@@ -20,6 +20,7 @@ services:
       - GITHUB_SECRET=${GITHUB_SECRET}
       - TURSO_DATABASE_URL=${TURSO_DATABASE_URL}
       - TURSO_AUTH_TOKEN=${TURSO_AUTH_TOKEN}
+      - AUTH_TRUST_HOST=${AUTH_TRUST_HOST:-true}
       # Tell the app where local workspaces are mounted
       - DATA_PATH=/app/codeverse-data
     volumes:

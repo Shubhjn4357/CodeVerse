@@ -74,6 +74,7 @@ RUN mkdir -p /app/workspaces
 EXPOSE 7860
 ENV PORT 7860
 ENV HOSTNAME "0.0.0.0"
+ENV AUTH_TRUST_HOST "true"
 
 # Start the custom server that integrates Socket.IO and Next.js
 CMD ["node", "dist/server.js"]

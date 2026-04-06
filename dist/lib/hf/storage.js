@@ -53,7 +53,9 @@ class HFStorage {
             const tmpDir = '/tmp/hf-sync';
             if (!fs_1.default.existsSync(tmpDir))
                 fs_1.default.mkdirSync(tmpDir, { recursive: true });
-            await this.execAsync(`huggingface-cli download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN}`, onLog);
+            // 2026 Resilience: try 'huggingface-cli' then fallback to newer 'hf' binary
+            const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN}) || (hf download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN})`;
+            await this.execAsync(cmd, onLog);
             const tarPath = path_1.default.join(tmpDir, 'profile.tar.gz');
             if (fs_1.default.existsSync(tarPath)) {
                 onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Restoring Nix profile...`);
@@ -79,7 +81,9 @@ class HFStorage {
                 fs_1.default.mkdirSync(tmpDir, { recursive: true });
             const tarPath = path_1.default.join(tmpDir, 'profile.tar.gz');
             await this.execAsync(`tar -czf ${tarPath} -C ${process.env.HOME || '/home/node'} .nix-profile`, onLog);
-            await this.execAsync(`huggingface-cli upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN}`, onLog);
+            // 2026 Resilience: try 'huggingface-cli' then fallback to newer 'hf' binary
+            const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN}) || (hf upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN})`;
+            await this.execAsync(cmd, onLog);
             onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Profile synchronized successfully.`);
         }
         catch (e) {

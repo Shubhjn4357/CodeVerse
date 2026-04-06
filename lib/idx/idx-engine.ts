@@ -113,33 +113,56 @@ export class IdxEngine {
       }
     }
 
-    for (const pkg of config.packages) {
-      log(`Installing ${pkg}...`);
-      const pkgName = pkg.replace('pkgs.', '');
-      
-      await new Promise<void>((resolve, reject) => {
-        // Modern 2026 Nix: Use 'nix profile add' instead of deprecated 'nix-env'
-        const child = spawn('nix', ['profile', 'add', `nixpkgs#${pkgName}`], {
-          cwd: workspacePath,
-          env: { 
-            ...process.env, 
-            HOME: workspacePath,
-            NIX_CONFIG: 'experimental-features = nix-command flakes'
-          }
+    // 🟢 HYDRATION GUARD: Skip synchronization if packages haven't changed
+    const idxDir = path.join(workspacePath, '.idx');
+    if (!fs.existsSync(idxDir)) fs.mkdirSync(idxDir, { recursive: true });
+    
+    const manifestPath = path.join(idxDir, 'packages.json');
+    if (fs.existsSync(manifestPath)) {
+        try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            const currentSorted = [...config.packages].sort();
+            const manifestSorted = [...(manifest.packages || [])].sort();
+            if (JSON.stringify(currentSorted) === JSON.stringify(manifestSorted)) {
+                log(`Environment already synchronized. Skipping profile update.`);
+                return;
+            }
+        } catch (e) {
+            log(`[WARN] Manifest corruption detected. Forcing re-sync.`);
+        }
+    }
+
+    // CACHIX ...
+    // ... (Cachix code remains the same or slightly optimized)
+    
+    const batchTargets = config.packages.map(pkg => `nixpkgs#${pkg.replace('pkgs.', '')}`);
+    log(`Batch installing: ${batchTargets.join(', ')}...`);
+
+    await new Promise<void>((resolve, reject) => {
+        const child = spawn('nix', ['profile', 'add', ...batchTargets], {
+            cwd: workspacePath,
+            env: { 
+                ...process.env, 
+                HOME: workspacePath,
+                NIX_CONFIG: 'experimental-features = nix-command flakes'
+            }
         });
 
         child.stdout.on('data', (data) => log(data.toString().trim()));
         child.stderr.on('data', (data) => log(`[INFO] ${data.toString().trim()}`));
         
         child.on('close', (code) => {
-          if (code === 0) resolve();
-          else reject(new Error(`Nix installation of ${pkgName} failed with code ${code}`));
+            if (code === 0) {
+                fs.writeFileSync(manifestPath, JSON.stringify({ packages: config.packages, timestamp: new Date().toISOString() }));
+                resolve();
+            } else {
+                reject(new Error(`Batch Nix installation failed with code ${code}`));
+            }
         });
-      }).catch((err: unknown) => {
+    }).catch((err: unknown) => {
         const errMsg = err instanceof Error ? err.message : String(err);
         log(`[ERROR] ${errMsg}`);
-      });
-    }
+    });
     log(`Environment synchronized successfully.`);
   }
 

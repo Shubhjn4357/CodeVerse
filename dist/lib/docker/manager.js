@@ -157,10 +157,6 @@ async function performProvisioning(config) {
         }
         fs_1.default.writeFileSync(flagPath, new Date().toISOString());
     }
-    if (idxConfig.onCreate) {
-        log(`Executing onCreate lifecycle hook...`);
-        await idx_engine_1.IdxEngine.runHook(workspacePath, 'onCreate', idxConfig.onCreate, (msg) => log(msg));
-    }
     // 4. Identify Target Port
     const port = findAvailablePort();
     // 5. Spawn Real code-server Process (Linux priority)

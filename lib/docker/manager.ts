@@ -185,10 +185,6 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         fs.writeFileSync(flagPath, new Date().toISOString());
     }
 
-    if (idxConfig.onCreate) {
-        log(`Executing onCreate lifecycle hook...`);
-        await IdxEngine.runHook(workspacePath, 'onCreate', idxConfig.onCreate, (msg) => log(msg));
-    }
 
     // 4. Identify Target Port
     const port = findAvailablePort();

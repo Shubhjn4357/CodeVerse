@@ -17,7 +17,7 @@ class IdxEngine {
      */
     static getDefaultConfig() {
         return {
-            packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker', 'pkgs.huggingface-hub'],
+            packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker', 'pkgs.python3Packages.huggingface-hub'],
             onCreate: 'npm install',
             onStart: 'sleep 5 && npm run dev'
         };
@@ -103,32 +103,53 @@ class IdxEngine {
                 log(`[WARN] Cachix setup bypassed. Falling back to default binary cache.`);
             }
         }
-        for (const pkg of config.packages) {
-            log(`Installing ${pkg}...`);
-            const pkgName = pkg.replace('pkgs.', '');
-            await new Promise((resolve, reject) => {
-                // Modern 2026 Nix: Use 'nix profile add' instead of deprecated 'nix-env'
-                const child = (0, child_process_1.spawn)('nix', ['profile', 'add', `nixpkgs#${pkgName}`], {
-                    cwd: workspacePath,
-                    env: {
-                        ...process.env,
-                        HOME: workspacePath,
-                        NIX_CONFIG: 'experimental-features = nix-command flakes'
-                    }
-                });
-                child.stdout.on('data', (data) => log(data.toString().trim()));
-                child.stderr.on('data', (data) => log(`[INFO] ${data.toString().trim()}`));
-                child.on('close', (code) => {
-                    if (code === 0)
-                        resolve();
-                    else
-                        reject(new Error(`Nix installation of ${pkgName} failed with code ${code}`));
-                });
-            }).catch((err) => {
-                const errMsg = err instanceof Error ? err.message : String(err);
-                log(`[ERROR] ${errMsg}`);
-            });
+        // 🟢 HYDRATION GUARD: Skip synchronization if packages haven't changed
+        const idxDir = path_1.default.join(workspacePath, '.idx');
+        if (!fs_1.default.existsSync(idxDir))
+            fs_1.default.mkdirSync(idxDir, { recursive: true });
+        const manifestPath = path_1.default.join(idxDir, 'packages.json');
+        if (fs_1.default.existsSync(manifestPath)) {
+            try {
+                const manifest = JSON.parse(fs_1.default.readFileSync(manifestPath, 'utf8'));
+                const currentSorted = [...config.packages].sort();
+                const manifestSorted = [...(manifest.packages || [])].sort();
+                if (JSON.stringify(currentSorted) === JSON.stringify(manifestSorted)) {
+                    log(`Environment already synchronized. Skipping profile update.`);
+                    return;
+                }
+            }
+            catch (e) {
+                log(`[WARN] Manifest corruption detected. Forcing re-sync.`);
+            }
         }
+        // CACHIX ...
+        // ... (Cachix code remains the same or slightly optimized)
+        const batchTargets = config.packages.map(pkg => `nixpkgs#${pkg.replace('pkgs.', '')}`);
+        log(`Batch installing: ${batchTargets.join(', ')}...`);
+        await new Promise((resolve, reject) => {
+            const child = (0, child_process_1.spawn)('nix', ['profile', 'add', ...batchTargets], {
+                cwd: workspacePath,
+                env: {
+                    ...process.env,
+                    HOME: workspacePath,
+                    NIX_CONFIG: 'experimental-features = nix-command flakes'
+                }
+            });
+            child.stdout.on('data', (data) => log(data.toString().trim()));
+            child.stderr.on('data', (data) => log(`[INFO] ${data.toString().trim()}`));
+            child.on('close', (code) => {
+                if (code === 0) {
+                    fs_1.default.writeFileSync(manifestPath, JSON.stringify({ packages: config.packages, timestamp: new Date().toISOString() }));
+                    resolve();
+                }
+                else {
+                    reject(new Error(`Batch Nix installation failed with code ${code}`));
+                }
+            });
+        }).catch((err) => {
+            const errMsg = err instanceof Error ? err.message : String(err);
+            log(`[ERROR] ${errMsg}`);
+        });
         log(`Environment synchronized successfully.`);
     }
     /**

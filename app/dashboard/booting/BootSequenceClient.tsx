@@ -8,11 +8,13 @@ export default function BootSequenceClient() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const id = searchParams.get("id");
+    const withAndroid = searchParams.get("withAndroid") === "true";
+    
     const [logs, setLogs] = useState<string[]>([]);
     const [status, setStatus] = useState<"booting" | "ready" | "error">("booting");
     const endRef = useRef<HTMLDivElement>(null);
 
-    const boot = useCallback(async () => {
+    const boot = useCallback(() => {
         if (!id) {
             setLogs(["ERROR: No workspace ID provided."]);
             setStatus("error");
@@ -22,57 +24,61 @@ export default function BootSequenceClient() {
         setStatus("booting");
         setLogs([]);
 
-        let isMounted = true;
-        const addLog = (msg: string) => {
-            if (isMounted) setLogs(prev => [...prev, msg]);
+        // Initialize Real-Time SSE Stream for workspace initialization
+        const eventSource = new EventSource(`/api/workspace/stream?id=${id}&withAndroid=${withAndroid}`);
+
+        eventSource.addEventListener("log", (event) => {
+            const msg = event.data;
+            setLogs(prev => [...prev, msg]);
+        });
+
+        eventSource.addEventListener("ready", (event) => {
+            try {
+                JSON.parse(event.data);
+                setLogs(prev => [...prev, "[SYSTEM] Workspace Online. Handshake complete."]);
+                setStatus("ready");
+                
+                // Redirect to workspace after a brief success confirmation
+                setTimeout(() => {
+                    router.push(`/?workspace=${encodeURIComponent(id)}`);
+                }, 1000);
+            } catch (e) {
+                console.error("Failed to parse ready event:", e);
+                setStatus("error");
+            } finally {
+                eventSource.close();
+            }
+        });
+
+        eventSource.addEventListener("error", (event) => {
+            try {
+                const errData = JSON.parse((event as MessageEvent).data);
+                setLogs(prev => [...prev, `[FATAL] ${errData.message || "Unknown stream error."}`]);
+            } catch {
+                setLogs(prev => [...prev, "[FATAL] The boot stream was interrupted unexpectedly."]);
+            }
+            setStatus("error");
+            eventSource.close();
+        });
+
+        // Basic error handler for connection issues
+        eventSource.onerror = () => {
+            setLogs(prev => {
+                if (prev.length > 0 && prev[prev.length - 1].startsWith("[FATAL]")) return prev;
+                return [...prev, "[FATAL] Lost connection to the provisioning engine."];
+            });
+            setStatus("error");
+            eventSource.close();
         };
 
-        try {
-            addLog(`[SYSTEM] Initializing boot sequence for workspace: ${id.slice(0, 8)}...`);
-            await new Promise(r => setTimeout(r, 600));
-
-            addLog(`[NETWORK] Resolving internal DNS routing...`);
-            await new Promise(r => setTimeout(r, 400));
-
-            addLog(`[DOCKER] Sending boot command to daemon via Dockerode...`);
-
-            const res = await fetch("/api/workspace", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "start", id })
-            });
-
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.error || "Failed to boot container");
-            }
-
-            addLog(`[DOCKER] Container successfully provisioned.`);
-            addLog(`[SYSTEM] Database state updated to 'running'.`);
-            await new Promise(r => setTimeout(r, 500));
-
-            addLog(`[PROXY] Establishing reverse proxy tunnel on port 8080...`);
-            await new Promise(r => setTimeout(r, 800));
-
-            addLog(`[SYSTEM] Environment ready. Redirecting to workspace...`);
-            if (isMounted) setStatus("ready");
-
-            setTimeout(() => {
-                if (isMounted) {
-                    router.push(`/?workspace=${encodeURIComponent(id)}`);
-                }
-            }, 1000);
-
-        } catch (err: unknown) {
-            addLog(`[FATAL] ${(err as Error).message}`);
-            if (isMounted) setStatus("error");
-        }
-
-        return () => { isMounted = false; };
-    }, [id, router]);
+        return () => {
+            eventSource.close();
+        };
+    }, [id, withAndroid, router]);
 
     useEffect(() => {
-        boot();
+        const cleanup = boot();
+        return () => { if (cleanup) cleanup(); };
     }, [boot]);
 
     useEffect(() => {
@@ -84,17 +90,17 @@ export default function BootSequenceClient() {
     return (
         <div className="flex flex-col gap-5">
             {/* Terminal Log */}
-            <div className="bg-[#0a0a0a] rounded-xl p-4 min-h-[300px] border border-[#222] shadow-[inset_0_0_30px_rgba(0,0,0,0.6)] overflow-y-auto font-mono text-sm">
+            <div className="bg-[#0a0a0a] rounded-xl p-4 min-h-[300px] border border-[#222] shadow-[inset_0_0_30px_rgba(0,0,0,0.6)] overflow-y-auto font-mono text-sm h-[400px]">
                 {logs.map((log, i) => (
                     <div key={i} className="mb-1 leading-relaxed">
                         {log.startsWith("[ERROR]") || log.startsWith("[FATAL]") ? (
                             <span className="text-red-400">{log}</span>
-                        ) : log.includes("ready") || log.includes("success") || log.includes("complete") ? (
+                        ) : log.includes("Ready") || log.includes("Online") || log.includes("success") || log.includes("complete") ? (
                             <span className="text-green-400">{log}</span>
-                        ) : log.startsWith("[SYSTEM]") ? (
+                        ) : log.startsWith("[SYSTEM]") || log.startsWith("[MANAGER]") ? (
                             <span className="text-blue-400">{log}</span>
                         ) : (
-                            <span className="text-zinc-400">{log}</span>
+                            <span className="text-zinc-500">{log}</span>
                         )}
                     </div>
                 ))}
@@ -102,7 +108,7 @@ export default function BootSequenceClient() {
                 {status === "booting" && (
                     <div className="flex items-center gap-2 mt-4 text-green-400">
                         <Loader2 size={14} className="animate-spin" />
-                        <span className="text-sm font-semibold animate-pulse">Running boot procedures...</span>
+                        <span className="text-sm font-semibold animate-pulse">Establishing container link...</span>
                     </div>
                 )}
                 {status === "ready" && (
@@ -112,9 +118,9 @@ export default function BootSequenceClient() {
                     </div>
                 )}
                 {status === "error" && (
-                    <div className="flex items-center gap-2 mt-4 text-red-400">
+                    <div className="flex items-center gap-2 mt-4 text-red-500">
                         <XCircle size={14} />
-                        <span className="text-sm font-semibold">Boot sequence failed.</span>
+                        <span className="text-sm font-semibold">Boot sequence interrupted.</span>
                     </div>
                 )}
                 <div ref={endRef} />
@@ -128,14 +134,14 @@ export default function BootSequenceClient() {
                         className="flex items-center gap-2 px-4 py-2 bg-[#161b22] hover:bg-[#21262d] text-zinc-300 hover:text-white rounded-lg text-sm transition-all border border-[#30363d] hover:border-[#444]"
                     >
                         <ArrowLeft size={14} />
-                        Back to Dashboard
+                        Abort Boot
                     </button>
                     <button
                         onClick={() => boot()}
                         className="flex items-center gap-2 px-4 py-2 bg-green-500/10 hover:bg-green-500/20 text-green-400 hover:text-green-300 rounded-lg text-sm transition-all border border-green-500/20 hover:border-green-500/40"
                     >
                         <RefreshCw size={14} />
-                        Retry Boot
+                        Retry Provisioning
                     </button>
                 </div>
             )}

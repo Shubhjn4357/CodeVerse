@@ -53,18 +53,20 @@ function renderProxyError(res: ServerResponse, error: string, id: string) {
                 .id { font-family: monospace; background: #0f172a; padding: 0.4rem 0.6rem; border-radius: 0.4rem; color: #38bdf8; font-size: 0.8rem; }
                 .btn { display: inline-block; background: #38bdf8; color: #0f172a; padding: 0.6rem 1.2rem; border-radius: 0.4rem; text-decoration: none; font-weight: bold; margin-top: 1.5rem; transition: transform 0.2s; }
                 .btn:hover { transform: scale(1.05); }
+                .terminal-link { color: #64748b; font-size: 0.7rem; text-decoration: underline; margin-top: 2rem; display: block; }
             </style>
         </head>
         <body>
             <div class="card">
-                <h1>Workspace Connection Refused</h1>
-                <p>Establishing native link for <span class="id">${id}</span>...</p>
+                <h1>Workspace Connection Restricted</h1>
+                <p>Native isolation link for <span class="id">${id}</span> failed.</p>
                 <p style="margin-top: 1rem; text-align: left; padding: 1rem; background: #0f172a; border-radius: 0.5rem; font-size: 0.75rem; color: #64748b;">
                     <b>Diagnostic:</b> ${error}<br>
-                    <b>Status:</b> Native isolation is active in limited cloud context.<br>
-                    <b>Target:</b> 127.0.0.1 (Docker unavailable)
+                    <b>Target:</b> Hugging Face Space (Sandboxed)<br>
+                    <b>Status:</b> Use the built-in system terminal to interact with files directly if the core IDE remains unreachable.
                 </p>
                 <a href="javascript:location.reload()" class="btn">Retry Link</a>
+                <a href="/dashboard/system" class="terminal-link">Open Direct Terminal</a>
             </div>
         </body>
         </html>
@@ -72,10 +74,21 @@ function renderProxyError(res: ServerResponse, error: string, id: string) {
 }
 
 proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duplex) => {
-    const parts = req.url?.split("/") || [];
-    const type = parts[1] || "workspace";
-    const id = parts[2] || "unknown";
+    const host = req.headers.host || "";
+    const parsedUrl = parse(req.url || "/", true);
+    const pathname = parsedUrl.pathname || "/";
+    const parts = pathname.split("/");
     
+    // Multi-layer Identity Detection
+    // 1. Session header injected by proxy logic
+    // 2. Subdomain identifier
+    // 3. Path-based identifier
+    const headerId = req.headers['x-codeverse-id'] as string;
+    const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
+    const id = headerId || (workspaceHostMatch ? workspaceHostMatch[1] : (parts[2] || "unknown"));
+    
+    const type = pathname.startsWith("/android/") ? "android" : (pathname.startsWith("/preview/") ? "preview" : "workspace");
+
     console.error(`[Proxy Connection Error] ${err.message} for ${type}/${id}`);
     
     if (res instanceof ServerResponse) {
@@ -116,6 +129,7 @@ app.prepare()
         const { pathname } = parsedUrl;
         const host = req.headers.host || "";
 
+        // Standard ID Detection for routing
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
         if (workspaceHostMatch) {
             const id = workspaceHostMatch[1];
@@ -240,7 +254,8 @@ app.prepare()
     io.on("connection", (socket) => {
         let shell: pty.IPty | null = null;
         socket.on("terminal:start", ({ cols, rows }: { cols: number; rows: number }) => {
-            const shellPath = os.platform() === "win32" ? "powershell.exe" : process.env.SHELL || "bash";
+            // Priority path for HF Spaces (Bash first)
+            const shellPath = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
             shell = pty.spawn(shellPath, [], {
                 name: "xterm-color",
                 cols: cols || 80,

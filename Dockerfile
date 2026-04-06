@@ -18,8 +18,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb fluxbox novnc websockify libnss3 libatk-bridge2.0-0 libcups2 libgtk-3-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Nix & Cachix Installation (Optimized for UID 1000)
-RUN mkdir -p /nix && chown node /nix && \
+# Install Hugging Face CLI for persistence layer
+RUN pip3 install --no-cache-dir "huggingface_hub[cli]"
+
+# Install code-server (Liquid-smooth IDE binary)
+RUN curl -fsSL https://code-server.dev/install.sh | sh
+
+# 2. Nix Installation (Optimized for UID 1000)
+# We set up /nix with correct permissions before switching to the node user
+RUN mkdir -p /nix && chown node:node /nix && \
     mkdir -p /etc/nix && echo "experimental-features = nix-command flakes" > /etc/nix/nix.conf
 
 USER node
@@ -28,34 +35,44 @@ WORKDIR /home/node
 # Use bash for reliable environment sourcing
 SHELL ["/bin/bash", "-c"]
 
-RUN ulimit -s $(ulimit -Hs) 2>/dev/null || true && \
-    curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
+# Use the Official Nix Installer (Non-interactive & No-daemon)
+# We use a specific version for 2026 stability
+RUN curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
     . /home/node/.nix-profile/etc/profile.d/nix.sh && \
-    /home/node/.nix-profile/bin/nix profile add nixpkgs#cachix nixpkgs#nix nixpkgs#cacert
+    /home/node/.nix-profile/bin/nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
+    /home/node/.nix-profile/bin/nix-channel --update
 
 ENV PATH="/home/node/.nix-profile/bin:/home/node/.nix-profile/sbin:${PATH}"
-ENV NIX_PATH="nixpkgs=https://github.com/NixOS/nixpkgs/archive/master.tar.gz"
+ENV NIX_PATH="nixpkgs=/home/node/.nix-defexpr/channels/nixpkgs"
 
 # 3. Application Provisioning
 USER root
-WORKDIR /app
+RUN mkdir -p /home/node/app && chown -R node:node /home/node/app
+WORKDIR /home/node/app
+
+# Copy package manifest first for better caching
 COPY --chown=node:node package*.json ./
+USER node
 RUN npm install --no-audit --no-fund --quiet --legacy-peer-deps
 
+# Copy rest of the application
+USER root
 COPY --chown=node:node . .
+USER node
 RUN npm run build
 
 # 4. Runtime Hardening
 ENV PORT=7860
 ENV NODE_ENV=production
 
-# Final Permissions Sync
+# Final Permissions Sync for persistence
+USER root
 RUN mkdir -p /home/node/app/workspaces && \
     mkdir -p /home/node/app/dist && \
-    chown -R node:node /home/node/app /app
+    chown -R node:node /home/node/app /home/node
 
 USER node
 
 # Authoritative Entrypoint for HF Spaces April 2026
-# Gracefully handle ulimit while setting production stack limits
+# Handle ulimit gracefully while launching the custom server
 CMD ["sh", "-c", "ulimit -s $(ulimit -Hs) 2>/dev/null || true && node dist/server.js"]

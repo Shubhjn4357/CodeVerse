@@ -51,8 +51,9 @@ export class IdxEngine {
       if (config.packages.length === 0) config.packages = this.getDefaultConfig().packages;
       
       return config;
-    } catch (e) {
-      console.warn(`[IDX-ENGINE] Failed to parse dev.nix, falling back to baseline:`, e);
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.warn(`[IDX-ENGINE] Failed to parse dev.nix, falling back to baseline:`, errorMessage);
       return this.getDefaultConfig();
     }
   }
@@ -125,7 +126,10 @@ export class IdxEngine {
           if (code === 0) resolve();
           else reject(new Error(`Nix installation of ${pkgName} failed with code ${code}`));
         });
-      }).catch(err => log(`[ERROR] ${err.message}`));
+      }).catch((err: unknown) => {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        log(`[ERROR] ${errMsg}`);
+      });
     }
     log(`Environment synchronized successfully.`);
   }
@@ -151,6 +155,9 @@ export class IdxEngine {
         if (code === 0) resolve();
         else reject(new Error(`Hook ${hookName} failed with code ${code}`));
       });
-    }).catch(err => log(`[ERROR] ${err.message}`));
+    }).catch((err: unknown) => {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      log(`[ERROR] ${errMsg}`);
+    });
   }
 }

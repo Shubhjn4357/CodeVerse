@@ -9,14 +9,13 @@ export class HFStorage {
     private static readonly HF_TOKEN = process.env.HF_TOKEN;
     private static readonly HF_DATASET_ID = process.env.HF_DATASET_ID;
     private static readonly PROFILE_PATH = path.join(process.env.HOME || '/home/node', '.nix-profile');
-    private static readonly WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/app/workspaces';
+    private static readonly WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/home/node/app/workspaces';
 
     /**
      * Internal helper for asynchronous execution with logging.
      */
     private static async execAsync(command: string, onLog?: (msg: string) => void): Promise<void> {
         return new Promise((resolve, reject) => {
-            const [cmd, ...args] = command.split(' ');
             const child = spawn('/bin/bash', ['-c', command], {
                 env: { ...process.env, HF_TOKEN: this.HF_TOKEN }
             });
@@ -53,8 +52,9 @@ export class HFStorage {
                 await this.execAsync(`tar -xzf ${tarPath} -C ${process.env.HOME || '/home/node'}`, onLog);
                 onLog?.(`[HF:STORAGE] Profile restored successfully.`);
             }
-        } catch (e: any) {
-            onLog?.(`[ERROR] Profile restoration failed: ${e.message}`);
+        } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            onLog?.(`[ERROR] Profile restoration failed: ${errorMessage}`);
         }
     }
 
@@ -74,8 +74,9 @@ export class HFStorage {
             await this.execAsync(`huggingface-cli upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN}`, onLog);
             
             onLog?.(`[HF:STORAGE] Profile synchronized successfully.`);
-        } catch (e: any) {
-            onLog?.(`[ERROR] Profile synchronization failed: ${e.message}`);
+        } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            onLog?.(`[ERROR] Profile synchronization failed: ${errorMessage}`);
         }
     }
 

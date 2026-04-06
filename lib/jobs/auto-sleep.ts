@@ -53,8 +53,9 @@ export async function checkIdleContainers() {
             // Set threshold for next check
             networkThresholds.set(workspaceId, currentRx);
         }
-    } catch (e) {
-        console.error("[Auto-Sleep] Error running cron:", e);
+    } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error("[Auto-Sleep] Error running cron:", errorMessage);
     }
 }
 

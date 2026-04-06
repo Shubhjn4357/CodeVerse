@@ -121,7 +121,7 @@ export interface WorkspaceOperationResult {
  * PREDICTIVE HYDRATION: Pre-warms Nix profile and SDKs.
  */
 export async function prewarmWorkspace(config: WorkspaceConfig): Promise<void> {
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
     const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
     
     if (!fs.existsSync(workspacePath)) {
@@ -153,7 +153,7 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
     HFStorage.startAutoSave(300000); // Start 5m auto-save loop
     
     // 1. Prepare Workspace Directory
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
     const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
     const userDataPath = path.join(/*turbopackIgnore: true*/ workspacePath, '.vscode-server');
     

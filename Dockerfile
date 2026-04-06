@@ -52,7 +52,7 @@ ENV NIX_PATH="nixpkgs=/home/node/.nix-defexpr/channels/nixpkgs"
 USER root
 RUN pip3 install --no-cache-dir --upgrade "huggingface_hub[cli]" 
 # Use Nix to install Cachix & HuggingFace Hub globally (for the container baseline)
-RUN /home/node/.nix-profile/bin/nix profile add nixpkgs#cachix nixpkgs#python3Packages.huggingface_hub
+RUN /home/node/.nix-profile/bin/nix profile add nixpkgs#cachix nixpkgs#huggingface-hub
 RUN mkdir -p /home/node/app && chown -R node:node /home/node/app
 WORKDIR /home/node/app
 

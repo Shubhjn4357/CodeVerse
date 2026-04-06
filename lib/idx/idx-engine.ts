@@ -21,7 +21,7 @@ export class IdxEngine {
    */
   static getDefaultConfig(): IdxConfig {
     return {
-      packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker', 'pkgs.python3Packages.huggingface_hub'],
+      packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker', 'pkgs.huggingface-hub'],
       onCreate: 'npm install',
       onStart: 'sleep 5 && npm run dev'
     };

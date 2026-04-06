@@ -67,21 +67,39 @@ export class IdxEngine {
     const log = (msg: string) => { if (onLog) onLog(`[IDX:NIX] ${msg}`); };
     log(`Syncing system packages: ${config.packages.join(', ')}...`);
 
-    // CACHIX ACCELERATION
-    const cachixName = process.env.CACHIX_CACHE_NAME;
-    if (cachixName) {
-      log(`Cachix acceleration detected for '${cachixName}'. Setting up cache...`);
+    // CACHIX ACCELERATION: Robust check for binary existence to prevent ENOENT crash
+    const cachixName = process.env.CACHIX_CACHE_NAME || 'code-nix';
+    let hasCachix = false;
+    
+    try {
+        await new Promise<void>((resolve) => {
+            const check = spawn('command', ['-v', 'cachix'], { shell: true });
+            check.on('close', (code) => {
+                hasCachix = (code === 0);
+                resolve();
+            });
+            check.on('error', () => {
+                hasCachix = false;
+                resolve();
+            });
+        });
+    } catch {
+        hasCachix = false;
+    }
+
+    if (hasCachix) {
+      log(`Cachix acceleration detected. Setting up cache: ${cachixName}...`);
       try {
         await new Promise<void>((resolve, reject) => {
           const child = spawn('cachix', ['use', cachixName], {
             cwd: workspacePath,
             env: { ...process.env, HOME: workspacePath }
           });
-          child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`Cachix setup failed with code ${code}`)));
+          child.on('error', (err) => reject(err));
+          child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`Cachix failed with code ${code}`)));
         });
-      } catch (e) {
-        log(`[WARN] Cachix setup failed. Falling back to default binary cache.`);
-        console.error(e);
+      } catch {
+        log(`[WARN] Cachix setup bypassed. Falling back to default binary cache.`);
       }
     }
 
@@ -90,13 +108,18 @@ export class IdxEngine {
       const pkgName = pkg.replace('pkgs.', '');
       
       await new Promise<void>((resolve, reject) => {
-        const child = spawn('nix-env', ['-iA', `nixpkgs.${pkgName}`], {
+        // Modern 2026 Nix: Use 'nix profile add' instead of deprecated 'nix-env'
+        const child = spawn('nix', ['profile', 'add', `nixpkgs#${pkgName}`], {
           cwd: workspacePath,
-          env: { ...process.env, HOME: workspacePath, NIX_PATH: `nixpkgs=https://github.com/NixOS/nixpkgs/archive/master.tar.gz` }
+          env: { 
+            ...process.env, 
+            HOME: workspacePath,
+            NIX_CONFIG: 'experimental-features = nix-command flakes'
+          }
         });
 
         child.stdout.on('data', (data) => log(data.toString().trim()));
-        child.stderr.on('data', (data) => log(`[WARN] ${data.toString().trim()}`));
+        child.stderr.on('data', (data) => log(`[INFO] ${data.toString().trim()}`));
         
         child.on('close', (code) => {
           if (code === 0) resolve();

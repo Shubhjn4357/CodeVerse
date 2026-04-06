@@ -2,41 +2,27 @@ import path from "path";
 import fs from "fs/promises";
 import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
 
+import { ENV_CONFIG } from "@/lib/env-config";
+
 function resolveWorkspaceBase(): string {
-    const cwd = process.cwd();
-    // Optimized sequence: Env Var -> Subfolder -> Mount Root -> Local App Data -> Local Home
-    const candidates = [
-        process.env.WORKSPACE_DIR,
-        "/data/workspaces",
-        "/data",
-        path.join(cwd, "workspaces"),
-        path.join(cwd, "data", "workspace") // User-requested fallback path
-    ];
-
-    for (const cand of candidates) {
-        if (!cand) continue;
-        try {
-            const absolutePath = path.resolve(cand);
-            // Ensure path exists
-            if (!existsSync(absolutePath)) {
-                mkdirSync(absolutePath, { recursive: true });
-            }
-            
-            // Critical Test: Check if we can actually write to this path
-            const testFile = path.join(absolutePath, `.write_test_${Math.random().toString(36).substring(7)}`);
-            writeFileSync(testFile, "test");
-            unlinkSync(testFile);
-            
-            console.log(`[SYSTEM] Found writable workspace root: ${absolutePath}`);
-            return absolutePath;
-        } catch {
-            // Silently try next candidate if this one is read-only or unreachable
+    // Standardize for production-grade isolation
+    const workspaceRoot = ENV_CONFIG.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+    
+    try {
+        if (!existsSync(workspaceRoot)) {
+            mkdirSync(workspaceRoot, { recursive: true });
         }
+        
+        // Critical Test: Check if we can actually write to this path
+        const testFile = path.join(/*turbopackIgnore: true*/ workspaceRoot, `.write_test_${Math.random().toString(36).substring(7)}`);
+        writeFileSync(testFile, "test");
+        unlinkSync(testFile);
+        
+        return workspaceRoot;
+    } catch (e) {
+        console.error(`[SYSTEM] Critical Storage Error for ${workspaceRoot}:`, e);
+        return workspaceRoot; 
     }
-
-    const ultimateFallback = path.join(cwd, "workspaces");
-    console.warn(`[SYSTEM] Persistence unavailable. Using local fallback: ${ultimateFallback}`);
-    return ultimateFallback;
 }
 
 const WORKSPACE_BASE = resolveWorkspaceBase();

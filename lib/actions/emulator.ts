@@ -37,9 +37,9 @@ export async function checkDeviceAvailability(platform: string, workspaceId: str
             const { loadWorkspaceConfig } = await import('@/lib/docker/builder');
             const path = await import('path');
             
-            const userId = "default-user"; // Fallback/Placeholder if not provided
-            // We need to resolve the path correctly based on our data structure
-            const dataPath = process.env.DATA_PATH || path.resolve(process.cwd(), 'workspaces', userId, workspaceId);
+            const userId = "default-user"; 
+            const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+            const dataPath = path.join(/*turbopackIgnore: true*/ workspaceRoot, userId, workspaceId);
             
             try {
                 const config = await loadWorkspaceConfig(dataPath);

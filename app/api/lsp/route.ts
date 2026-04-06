@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
             try {
                 const projectRoot = await resolveSafePath(userId, workspaceName);
                 const proc = spawn(config.cmd, config.args, {
-                    cwd: projectRoot,
+                    cwd: /*turbopackIgnore: true*/ projectRoot,
                     stdio: ["pipe", "pipe", "pipe"],
                     shell: process.platform === "win32"
                 });

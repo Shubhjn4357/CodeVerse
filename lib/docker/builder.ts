@@ -57,8 +57,8 @@ function parseBasicNix(nixContent: string): CodeverseConfig {
 }
 
 export async function loadWorkspaceConfig(workspacePath: string): Promise<CodeverseConfig> {
-    const codeverseJsonPath = path.join(workspacePath, 'codeverse.json');
-    const idxNixPath = path.join(workspacePath, '.idx', 'dev.nix');
+    const codeverseJsonPath = path.join(/*turbopackIgnore: true*/ workspacePath, 'codeverse.json');
+    const idxNixPath = path.join(/*turbopackIgnore: true*/ workspacePath, '.idx', 'dev.nix');
 
     // 1. Check for Project IDX dev.nix
     try {
@@ -134,10 +134,10 @@ export async function buildWorkspaceImage(
     dockerfile += `WORKDIR /home/coder/project\n`;
 
     // Write to a temporary hidden dir in the workspace
-    const buildDir = path.join(workspacePath, '.codeverse');
+    const buildDir = path.join(/*turbopackIgnore: true*/ workspacePath, '.codeverse');
     await fs.mkdir(buildDir, { recursive: true });
 
-    const dockerfilePath = path.join(buildDir, 'Dockerfile');
+    const dockerfilePath = path.join(/*turbopackIgnore: true*/ buildDir, 'Dockerfile');
     await fs.writeFile(dockerfilePath, dockerfile);
 
     const imageName = `codeverse-workspace-${workspaceId}`;

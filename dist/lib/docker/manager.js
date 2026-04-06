@@ -108,8 +108,8 @@ function getAndroidPort() {
  * PREDICTIVE HYDRATION: Pre-warms Nix profile and SDKs.
  */
 async function prewarmWorkspace(config) {
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(process.cwd(), 'workspaces');
-    const workspacePath = path_1.default.join(workspaceRoot, config.id);
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+    const workspacePath = path_1.default.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
     if (!fs_1.default.existsSync(workspacePath)) {
         fs_1.default.mkdirSync(workspacePath, { recursive: true });
     }
@@ -135,9 +135,9 @@ async function performProvisioning(config) {
     await storage_1.HFStorage.syncFromDataset((msg) => log(msg));
     storage_1.HFStorage.startAutoSave(300000); // Start 5m auto-save loop
     // 1. Prepare Workspace Directory
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(process.cwd(), 'workspaces');
-    const workspacePath = path_1.default.join(workspaceRoot, config.id);
-    const userDataPath = path_1.default.join(workspacePath, '.vscode-server');
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+    const workspacePath = path_1.default.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
+    const userDataPath = path_1.default.join(/*turbopackIgnore: true*/ workspacePath, '.vscode-server');
     if (!fs_1.default.existsSync(workspacePath)) {
         fs_1.default.mkdirSync(workspacePath, { recursive: true });
         log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);

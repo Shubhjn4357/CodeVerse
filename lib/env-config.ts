@@ -27,11 +27,17 @@ export const ENV_CONFIG = {
  * Validates that all critical infrastructure secrets are available.
  */
 export function validateEnvironment() {
-    const missing = [];
+    const missing: string[] = [];
     if (!ENV_CONFIG.HF_TOKEN) missing.push('HF_TOKEN');
     if (!ENV_CONFIG.HF_DATASET_ID) missing.push('HF_DATASET_ID');
     if (!ENV_CONFIG.AUTH_SECRET) missing.push('AUTH_SECRET');
     if (!ENV_CONFIG.DATABASE_URL) missing.push('TURSO_URL');
+
+    // Strategic Dataset Validation
+    if (ENV_CONFIG.HF_DATASET_ID && !ENV_CONFIG.HF_DATASET_ID.includes('/')) {
+        console.error("[CRITICAL] HF_DATASET_ID must be in 'username/dataset' format.");
+        return { valid: false, missing: ['HF_DATASET_ID_FORMAT_ERROR'] };
+    }
 
     return {
         valid: missing.length === 0,

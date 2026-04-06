@@ -30,7 +30,8 @@ RUN curl --retry 5 --proto '=https' --tlsv1.2 -sSf -L https://install.determinat
 # 5. Advanced Acceleration (Cachix & Hugging Face CLI)
 RUN pip3 install --no-cache-dir huggingface-hub --break-system-packages --root-user-action=ignore \
     && . /nix/var/nix/profiles/default/etc/profile.d/nix-daemon.sh \
-    && nix profile install nixpkgs#cachix
+    && ulimit -s 65536 || true \
+    && nix profile add nixpkgs#cachix
 
 # 6. Android SDK (Studio Preview Engine Integration - Layer Optimized)
 # Using retry-aware downloads for platform tools

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 7860",
+    "dev": "next dev",
     "build": "next build && tsc server.ts --esModuleInterop --skipLibCheck --target es2018 --module commonjs --moduleResolution node --downlevelIteration --outDir ./dist",
     "start": "node dist/server.js",
     "lint": "eslint . --ignore-pattern dist/ --ignore-pattern .next/"

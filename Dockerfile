@@ -24,25 +24,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip3 install --no-cache-dir "huggingface_hub[cli]" && \
     curl -fsSL https://code-server.dev/install.sh | sh
 
-# 2. Nix Installation (Optimized for Hugging Face 2026)
+# 2. Nix Installation (Hardened for Hugging Face 2026)
 RUN mkdir -p /nix && chown node:node /nix && \
     mkdir -p /etc/nix && echo "experimental-features = nix-command flakes" > /etc/nix/nix.conf && \
     mkdir -p /home/node/.cache && \
-    mkdir -p /home/node/.nix-defexpr/channels && \
     chown -R node:node /home/node /nix /etc/nix
 
 USER node
 WORKDIR /home/node
 SHELL ["/bin/bash", "-c"]
 
-# Use the Official Nix Installer (Non-interactive & No-daemon)
-# Note: ulimit is set to the builder's maximum during install to prevent stack overflow
+# Note: ulimit is set to the builder's maximum during install to prevent stack overflow.
+# IMPORTANT: ~/.nix-defexpr/channels should NOT be pre-created as it conflicts with Nix's symlink.
 RUN export XDG_CACHE_HOME=/home/node/.cache && \
     ulimit -s $(ulimit -Hs) 2>/dev/null || true && \
+    rm -rf /home/node/.nix-defexpr /home/node/.nix-profile /home/node/.nix-channels && \
     curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
     . /home/node/.nix-profile/etc/profile.d/nix.sh && \
-    nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
-    nix-channel --update
+    /home/node/.nix-profile/bin/nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs && \
+    /home/node/.nix-profile/bin/nix-channel --update
 
 ENV PATH="/home/node/.nix-profile/bin:/home/node/.nix-profile/sbin:${PATH}"
 ENV NIX_PATH="nixpkgs=/home/node/.nix-defexpr/channels/nixpkgs"

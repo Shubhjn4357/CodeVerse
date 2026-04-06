@@ -49,21 +49,24 @@ const delay = (ms) => new Promise(res => setTimeout(res, ms));
  */
 function findAvailablePort() {
     const occupiedPorts = Array.from(nativeProcesses.values()).map(p => p.port);
-    for (let port = 8080; port <= 8099; port++) {
-        if (!occupiedPorts.includes(port))
-            return port;
+    // Start from a higher random range to avoid system port 8080 conflicts
+    let port = Math.floor(Math.random() * (9000 - 8100) + 8100);
+    while (occupiedPorts.includes(port)) {
+        port = Math.floor(Math.random() * (9000 - 8100) + 8100);
     }
-    return Math.floor(Math.random() * (8999 - 8100) + 8100);
+    return port;
 }
 /**
  * Checks if Docker is available in the current environment.
  */
 async function isDockerAvailable() {
     const socketPath = process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock';
-    if (process.env.SPACE_ID)
-        return { available: false, reason: "Hugging Face Space (Sandboxed)" };
-    if (!fs_1.default.existsSync(socketPath))
-        return { available: false, reason: "Docker socket missing" };
+    if (process.env.SIMULATE_HF === 'true') {
+        return { available: false, reason: "Hugging Face Simulation Mode (Artificial Sandbox)" };
+    }
+    if (process.env.SPACE_ID) {
+        return { available: false, reason: "Hugging Face Space (Native Sandboxed)" };
+    }
     try {
         const docker = new dockerode_1.default({ socketPath: process.platform === 'win32' ? undefined : socketPath });
         await docker.ping();
@@ -108,10 +111,10 @@ function getAndroidPort() {
  * PREDICTIVE HYDRATION: Pre-warms Nix profile and SDKs.
  */
 async function prewarmWorkspace(config) {
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
     const workspacePath = path_1.default.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
     if (!fs_1.default.existsSync(workspacePath)) {
-        fs_1.default.mkdirSync(workspacePath, { recursive: true });
+        fs_1.default.mkdirSync(/*turbopackIgnore: true*/ workspacePath, { recursive: true });
     }
     const idxConfig = idx_engine_1.IdxEngine.getIdxConfig(workspacePath);
     if (idxConfig) {
@@ -135,18 +138,18 @@ async function performProvisioning(config) {
     await storage_1.HFStorage.syncFromDataset((msg) => log(msg));
     storage_1.HFStorage.startAutoSave(300000); // Start 5m auto-save loop
     // 1. Prepare Workspace Directory
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
     const workspacePath = path_1.default.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
     const userDataPath = path_1.default.join(/*turbopackIgnore: true*/ workspacePath, '.vscode-server');
     if (!fs_1.default.existsSync(workspacePath)) {
-        fs_1.default.mkdirSync(workspacePath, { recursive: true });
+        fs_1.default.mkdirSync(/*turbopackIgnore: true*/ workspacePath, { recursive: true });
         log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
     }
     // 2. IDX Engine: Sync Environment (Async/Non-blocking)
     const idxConfig = idx_engine_1.IdxEngine.getIdxConfig(workspacePath);
     log(`Declarative config detected (Packages: ${idxConfig.packages.length}). Initializing synchronization...`);
     await idx_engine_1.IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
-    const flagPath = path_1.default.join(workspacePath, '.idx-created');
+    const flagPath = path_1.default.join(/*turbopackIgnore: true*/ workspacePath, '.idx-created');
     if (!fs_1.default.existsSync(flagPath)) {
         if (idxConfig.onCreate) {
             log(`Executing onCreate lifecycle hook...`);
@@ -154,9 +157,9 @@ async function performProvisioning(config) {
         }
         fs_1.default.writeFileSync(flagPath, new Date().toISOString());
     }
-    if (idxConfig.onStart) {
-        log(`Executing onStart lifecycle hook...`);
-        await idx_engine_1.IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg));
+    if (idxConfig.onCreate) {
+        log(`Executing onCreate lifecycle hook...`);
+        await idx_engine_1.IdxEngine.runHook(workspacePath, 'onCreate', idxConfig.onCreate, (msg) => log(msg));
     }
     // 4. Identify Target Port
     const port = findAvailablePort();
@@ -171,27 +174,45 @@ async function performProvisioning(config) {
         '--disable-update-check',
         workspacePath
     ];
+    const spawnEnv = { ...process.env, HOME: workspacePath };
+    delete spawnEnv.PORT;
+    delete spawnEnv.SERVER_PORT;
     const child = (0, child_process_1.spawn)(shellCommand, [...args, ...baseArgs], {
-        env: { ...process.env, HOME: workspacePath },
+        env: spawnEnv,
         cwd: workspacePath,
         shell: process.platform === 'win32'
     });
     log(`Spawning VS Code Orchestrator (PID: ${child.pid})...`);
     child.on('error', (err) => log(`[FATAL] IDE binary failure: ${err.message}`));
     child.stdout.on('data', (data) => {
-        const out = data.toString();
+        const out = data.toString().trim();
         if (out.includes('listening on'))
-            log(`[IDX:UP] ${out.trim()}`);
+            log(`[IDX:UP] ${out}`);
+        else if (out.length > 0)
+            log(`[IDE:CORE] ${out}`);
+    });
+    child.stderr.on('data', (data) => {
+        const err = data.toString().trim();
+        if (err.length > 0)
+            log(`[IDE:ERR] ${err}`);
+    });
+    child.on('close', (code, signal) => {
+        log(`[IDE:EXIT] IDE process died with code ${code} (Signal: ${signal})`);
     });
     // 6. Register in active pool
     nativeProcesses.set(config.id, { pid: child.pid, port, process: child });
     // 7. Handshake Loop
     let attempts = 0;
-    while (attempts < 15) {
+    while (attempts < 60) {
         try {
             const res = await fetch(`http://127.0.0.1:${port}`);
             if (res.ok) {
                 log(`Handshake verified. Studio Engine Online.`);
+                // 🟢 PRIORITY SHIFT: Start hooks ONLY AFTER the IDE is confirmed ready
+                if (idxConfig.onStart) {
+                    log(`Executing background onStart lifecycle hooks...`);
+                    idx_engine_1.IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg), true);
+                }
                 const finalResult = {
                     success: true,
                     containerId: `native-${config.id}`,
@@ -203,10 +224,14 @@ async function performProvisioning(config) {
             }
         }
         catch (_a) {
+            if (attempts % 5 === 0)
+                log(`[INFO] Scanning for IDE heartbeat... (Attempt ${attempts}/60)`);
+            if (attempts === 15)
+                log(`[INFO] Nix evaluation in progress. Cold boot detected.`);
+            if (attempts === 45)
+                log(`[WARN] Handshake threshold approaching. IDE core high load.`);
             await delay(1000);
             attempts++;
-            if (attempts % 3 === 0)
-                log(`Warming up IDE core (attempt ${attempts}/15)...`);
         }
     }
     log(`[FATAL] Handshake timeout on 127.0.0.1:${port}.`);

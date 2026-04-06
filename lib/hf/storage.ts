@@ -16,12 +16,23 @@ export class HFStorage {
      */
     private static async execAsync(command: string, onLog?: (msg: string) => void): Promise<void> {
         return new Promise((resolve, reject) => {
+            const spawnEnv = { 
+                ...process.env, 
+                HF_TOKEN: this.HF_TOKEN,
+                PATH: `/home/node/.local/bin:/home/node/.nix-profile/bin:/usr/local/bin:/usr/bin:${process.env.PATH}` 
+            };
             const child = spawn('/bin/bash', ['-c', command], {
-                env: { ...process.env, HF_TOKEN: this.HF_TOKEN }
+                env: spawnEnv
             });
 
             child.stdout.on('data', (data) => onLog?.(data.toString().trim()));
-            child.stderr.on('data', (data) => onLog?.(`[WARN] ${data.toString().trim()}`));
+            child.stderr.on('data', (data) => {
+                const msg = data.toString().trim();
+                if (msg.includes('command not found')) {
+                    onLog?.(`[CRITICAL] Binary missing: ${msg}. Current PATH: ${spawnEnv.PATH}`);
+                }
+                onLog?.(`[WARN] ${msg}`);
+            });
 
             child.on('close', (code) => {
                 if (code === 0) resolve();

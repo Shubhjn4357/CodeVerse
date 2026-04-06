@@ -16,12 +16,22 @@ class HFStorage {
      */
     static async execAsync(command, onLog) {
         return new Promise((resolve, reject) => {
-            const [cmd, ...args] = command.split(' ');
+            const spawnEnv = {
+                ...process.env,
+                HF_TOKEN: this.HF_TOKEN,
+                PATH: `/home/node/.local/bin:/home/node/.nix-profile/bin:/usr/local/bin:/usr/bin:${process.env.PATH}`
+            };
             const child = (0, child_process_1.spawn)('/bin/bash', ['-c', command], {
-                env: { ...process.env, HF_TOKEN: this.HF_TOKEN }
+                env: spawnEnv
             });
             child.stdout.on('data', (data) => onLog === null || onLog === void 0 ? void 0 : onLog(data.toString().trim()));
-            child.stderr.on('data', (data) => onLog === null || onLog === void 0 ? void 0 : onLog(`[WARN] ${data.toString().trim()}`));
+            child.stderr.on('data', (data) => {
+                const msg = data.toString().trim();
+                if (msg.includes('command not found')) {
+                    onLog === null || onLog === void 0 ? void 0 : onLog(`[CRITICAL] Binary missing: ${msg}. Current PATH: ${spawnEnv.PATH}`);
+                }
+                onLog === null || onLog === void 0 ? void 0 : onLog(`[WARN] ${msg}`);
+            });
             child.on('close', (code) => {
                 if (code === 0)
                     resolve();
@@ -52,7 +62,8 @@ class HFStorage {
             }
         }
         catch (e) {
-            onLog === null || onLog === void 0 ? void 0 : onLog(`[ERROR] Profile restoration failed: ${e.message}`);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            onLog === null || onLog === void 0 ? void 0 : onLog(`[ERROR] Profile restoration failed: ${errorMessage}`);
         }
     }
     /**
@@ -72,7 +83,8 @@ class HFStorage {
             onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Profile synchronized successfully.`);
         }
         catch (e) {
-            onLog === null || onLog === void 0 ? void 0 : onLog(`[ERROR] Profile synchronization failed: ${e.message}`);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            onLog === null || onLog === void 0 ? void 0 : onLog(`[ERROR] Profile synchronization failed: ${errorMessage}`);
         }
     }
     /**
@@ -88,4 +100,4 @@ exports.HFStorage = HFStorage;
 HFStorage.HF_TOKEN = process.env.HF_TOKEN;
 HFStorage.HF_DATASET_ID = process.env.HF_DATASET_ID;
 HFStorage.PROFILE_PATH = path_1.default.join(process.env.HOME || '/home/node', '.nix-profile');
-HFStorage.WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/app/workspaces';
+HFStorage.WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/home/node/app/workspaces';

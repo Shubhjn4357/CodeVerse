@@ -17,16 +17,16 @@ class IdxEngine {
      */
     static getDefaultConfig() {
         return {
-            packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker'],
+            packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker', 'pkgs.python3Packages.huggingface_hub'],
             onCreate: 'npm install',
-            onStart: 'npm run dev'
+            onStart: 'sleep 5 && npm run dev'
         };
     }
     /**
      * Detects and parses the .idx/dev.nix file in the workspace root.
      */
     static getIdxConfig(workspacePath) {
-        const configPath = path_1.default.join(workspacePath, '.idx', 'dev.nix');
+        const configPath = path_1.default.join(/*turbopackIgnore: true*/ workspacePath, '.idx', 'dev.nix');
         if (!fs_1.default.existsSync(configPath))
             return this.getDefaultConfig();
         try {
@@ -45,7 +45,8 @@ class IdxEngine {
             return config;
         }
         catch (e) {
-            console.warn(`[IDX-ENGINE] Failed to parse dev.nix, falling back to baseline:`, e);
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            console.warn(`[IDX-ENGINE] Failed to parse dev.nix, falling back to baseline:`, errorMessage);
             return this.getDefaultConfig();
         }
     }
@@ -79,6 +80,14 @@ class IdxEngine {
             hasCachix = false;
         }
         if (hasCachix) {
+            const cachixToken = process.env.CACHIX_AUTH_TOKEN;
+            if (cachixToken) {
+                log(`Cachix authentication detected. Configuring access...`);
+                await new Promise((resolve) => {
+                    const auth = (0, child_process_1.spawn)('cachix', ['authtoken', cachixToken], { env: { ...process.env, HOME: workspacePath } });
+                    auth.on('close', () => resolve());
+                });
+            }
             log(`Cachix acceleration detected. Setting up cache: ${cachixName}...`);
             try {
                 await new Promise((resolve, reject) => {
@@ -115,32 +124,52 @@ class IdxEngine {
                     else
                         reject(new Error(`Nix installation of ${pkgName} failed with code ${code}`));
                 });
-            }).catch(err => log(`[ERROR] ${err.message}`));
+            }).catch((err) => {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                log(`[ERROR] ${errMsg}`);
+            });
         }
         log(`Environment synchronized successfully.`);
     }
     /**
      * Executes the 'onCreate' and 'onStart' hooks.
-     * ASYNCHRONOUS Spawning to prevent Blocking.
+     * supports background execution for 'onStart' to prevent blocking the IDE handshake.
      */
-    static async runHook(workspacePath, hookName, script, onLog) {
+    static async runHook(workspacePath, hookName, script, onLog, background = false) {
         const log = (msg) => { if (onLog)
             onLog(`[IDX:HOOK] ${hookName}: ${msg}`); };
-        log(`Executing script...`);
-        await new Promise((resolve, reject) => {
+        log(`Executing script... ${background ? '(Background)' : ''}`);
+        const hookPromise = new Promise((resolve, reject) => {
+            // 🟢 PORT DE-CONFLICTION: Ensure hooks don't inherit the main orchestrator's port 7860
+            const spawnEnv = { ...process.env, HOME: workspacePath };
+            delete spawnEnv.PORT;
+            delete spawnEnv.SERVER_PORT;
             const child = (0, child_process_1.spawn)('/bin/bash', ['-c', script], {
                 cwd: workspacePath,
-                env: { ...process.env, HOME: workspacePath }
+                env: spawnEnv
             });
             child.stdout.on('data', (data) => log(data.toString().trim()));
             child.stderr.on('data', (data) => log(`[WARN] ${data.toString().trim()}`));
             child.on('close', (code) => {
-                if (code === 0)
+                if (code === 0) {
+                    log(`Hook ${hookName} completed successfully.`);
                     resolve();
-                else
-                    reject(new Error(`Hook ${hookName} failed with code ${code}`));
+                }
+                else {
+                    const err = new Error(`Hook ${hookName} failed with code ${code}`);
+                    log(`[ERROR] ${err.message}`);
+                    reject(err);
+                }
             });
-        }).catch(err => log(`[ERROR] ${err.message}`));
+            // If background, resolve immediately after spawn
+            if (background) {
+                log(`Hook detached and running in baseline context.`);
+                resolve();
+            }
+        });
+        if (!background) {
+            await hookPromise.catch(() => { }); // Catch handled in promise
+        }
     }
 }
 exports.IdxEngine = IdxEngine;

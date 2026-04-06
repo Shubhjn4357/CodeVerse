@@ -21,7 +21,7 @@ export class IdxEngine {
    */
   static getDefaultConfig(): IdxConfig {
     return {
-      packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker'],
+      packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker', 'pkgs.python3Packages.huggingface_hub'],
       onCreate: 'npm install',
       onStart: 'sleep 5 && npm run dev'
     };
@@ -153,7 +153,7 @@ export class IdxEngine {
 
     const hookPromise = new Promise<void>((resolve, reject) => {
       // 🟢 PORT DE-CONFLICTION: Ensure hooks don't inherit the main orchestrator's port 7860
-      const spawnEnv: any = { ...process.env, HOME: workspacePath };
+      const spawnEnv: NodeJS.ProcessEnv = { ...process.env, HOME: workspacePath };
       delete spawnEnv.PORT;
       delete spawnEnv.SERVER_PORT;
 

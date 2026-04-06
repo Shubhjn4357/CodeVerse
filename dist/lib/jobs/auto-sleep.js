@@ -51,7 +51,8 @@ async function checkIdleContainers() {
         }
     }
     catch (e) {
-        console.error("[Auto-Sleep] Error running cron:", e);
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.error("[Auto-Sleep] Error running cron:", errorMessage);
     }
 }
 function startAutoSleepCron() {

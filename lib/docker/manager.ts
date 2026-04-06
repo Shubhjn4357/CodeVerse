@@ -206,8 +206,12 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         workspacePath
     ];
 
+    const spawnEnv: NodeJS.ProcessEnv = { ...process.env, HOME: workspacePath };
+    delete spawnEnv.PORT;
+    delete spawnEnv.SERVER_PORT;
+
     const child = spawn(shellCommand, [...args, ...baseArgs], {
-        env: { ...process.env, HOME: workspacePath },
+        env: spawnEnv,
         cwd: workspacePath,
         shell: process.platform === 'win32'
     });

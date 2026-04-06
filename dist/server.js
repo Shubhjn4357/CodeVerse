@@ -188,6 +188,9 @@ app.prepare()
         }
         if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/android/")) {
             const port = (0, manager_1.getAndroidPort)() || 6080;
+            const id = pathname.split("/")[2] || "android-unified";
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'android';
             req.url = "/" + pathname.split("/").slice(3).join("/");
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
@@ -214,6 +217,8 @@ app.prepare()
         const id = workspaceHostMatch ? workspaceHostMatch[1] : ((pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) ? pathname.split("/")[2] : null);
         if (id && (0, manager_1.isNativeWorkspaceRunning)(id)) {
             const port = (0, manager_1.getNativeWorkspacePort)(id) || 8080;
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'workspace';
             if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) {
                 req.url = "/" + pathname.split("/").slice(3).join("/");
             }
@@ -227,6 +232,9 @@ app.prepare()
         }
         if (pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/android/")) {
             const port = (0, manager_1.getAndroidPort)() || 6080;
+            const id = pathname.split("/")[2] || "android-unified";
+            req.headers['x-codeverse-id'] = id;
+            req.headers['x-codeverse-type'] = 'android';
             req.url = "/" + pathname.split("/").slice(3).join("/");
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
@@ -252,8 +260,9 @@ app.prepare()
             if (messageType === 0) {
                 encoding.writeVarUint(encoder, 0);
                 syncProtocol.readSyncMessage(decoder, encoder, doc, null);
-                if (encoding.length(encoder) > 1)
+                if (encoding.length(encoder) > 1) {
                     conn.send(encoding.toUint8Array(encoder));
+                }
             }
             else if (messageType === 1) {
                 awarenessProtocol.applyAwarenessUpdate(awareness, decoding.readVarUint8Array(decoder), conn);
@@ -272,6 +281,40 @@ app.prepare()
             doc.off("update", updateHandler);
             awarenessProtocol.removeAwarenessStates(awareness, [doc.clientID], null);
         });
+    });
+    /**
+     * PROXY GLOBAL LISTENERS
+     */
+    proxy.on("proxyReq", (proxyReq, req) => {
+        const id = req.headers['x-codeverse-id'];
+        const type = req.headers['x-codeverse-type'];
+        if (id)
+            proxyReq.setHeader('x-codeverse-id', id);
+        if (type)
+            proxyReq.setHeader('x-codeverse-type', type);
+        const proto = req.headers['x-forwarded-proto'] || 'http';
+        proxyReq.setHeader('X-Forwarded-Proto', proto);
+        const host = req.headers.host;
+        if (host)
+            proxyReq.setHeader('X-Forwarded-Host', host);
+    });
+    proxy.on("proxyRes", (proxyRes, req) => {
+        const id = req.headers['x-codeverse-id'];
+        const type = req.headers['x-codeverse-type'];
+        const location = proxyRes.headers.location;
+        if (location && id && type) {
+            const prefix = type === 'workspace' ? `/workspace/${id}` : '/android';
+            if (location.startsWith("/") && !location.startsWith(prefix)) {
+                proxyRes.headers.location = prefix + location;
+            }
+            else if (location.includes("127.0.0.1") || location.includes("localhost")) {
+                try {
+                    const locUrl = new URL(location);
+                    proxyRes.headers.location = prefix + locUrl.pathname + locUrl.search;
+                }
+                catch (_a) { }
+            }
+        }
     });
     io.on("connection", (socket) => {
         let shell = null;
@@ -304,7 +347,10 @@ app.prepare()
     const PORT = process.env.PORT || 7860;
     server.listen(PORT, () => {
         let inferredUrl = `http://localhost:${PORT}`;
-        if (process.env.SPACE_ID) {
+        if (process.env.SIMULATE_HF === 'true') {
+            console.warn("⚠️  HUGGING FACE SIMULATION MODE ACTIVE (Shared Memory, Native Fallback, Sandboxed FS)");
+        }
+        if (process.env.SPACE_ID && process.env.SPACE_ID.includes('/')) {
             const [user, name] = process.env.SPACE_ID.split('/');
             inferredUrl = `https://${user.toLowerCase()}-${name.toLowerCase()}.hf.space`;
         }

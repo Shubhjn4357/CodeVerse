@@ -25,10 +25,13 @@ RUN mkdir -p /nix && chown node /nix && \
 USER node
 WORKDIR /home/node
 
+# Use bash for reliable environment sourcing
+SHELL ["/bin/bash", "-c"]
+
 RUN ulimit -s $(ulimit -Hs) 2>/dev/null || true && \
     curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
-    . ~/.nix-profile/etc/profile.d/nix.sh && \
-    nix profile add nixpkgs#cachix nixpkgs#nix nixpkgs#cacert
+    . /home/node/.nix-profile/etc/profile.d/nix.sh && \
+    /home/node/.nix-profile/bin/nix profile add nixpkgs#cachix nixpkgs#nix nixpkgs#cacert
 
 ENV PATH="/home/node/.nix-profile/bin:/home/node/.nix-profile/sbin:${PATH}"
 ENV NIX_PATH="nixpkgs=https://github.com/NixOS/nixpkgs/archive/master.tar.gz"

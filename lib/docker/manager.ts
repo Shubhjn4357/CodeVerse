@@ -22,13 +22,16 @@ export function isNativeWorkspaceRunning(id: string): boolean {
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 /**
- * Finds an available port in the 8081-8099 range.
+ * Finds an available port in the 8080-8099 range.
+ * Defaults to 8080 if not occupied.
  */
 function findAvailablePort(): number {
     const occupiedPorts = Array.from(nativeProcesses.values()).map(p => p.port);
-    for (let port = 8081; port <= 8099; port++) {
+    // Start with 8080 to maintain baseline proxy consistency
+    for (let port = 8080; port <= 8099; port++) {
         if (!occupiedPorts.includes(port)) return port;
     }
+    // Final fallback
     return Math.floor(Math.random() * (8999 - 8100) + 8100);
 }
 

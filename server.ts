@@ -13,7 +13,7 @@ import * as pty from "node-pty";
 import os from "os";
 import { Duplex } from "stream";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
-import { getNativeWorkspacePort, getAndroidPort } from "./lib/docker/manager";
+import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning } from "./lib/docker/manager";
 import { initDb } from "./lib/db/schema";
 import httpProxy from "http-proxy";
 
@@ -65,7 +65,7 @@ function renderProxyError(res: ServerResponse, error: string, id: string) {
                     <b>Target:</b> Hugging Face Space (Sandboxed)<br>
                     <b>Status:</b> Use the built-in system terminal to interact with files directly if the core IDE remains unreachable.
                 </p>
-                <a href="javascript:location.reload()" class="btn">Retry Link</a>
+                <a href="/dashboard/booting?id=${id}" class="btn">Auto-Repair & Boot</a>
                 <a href="/dashboard/system" class="terminal-link">Open Direct Terminal</a>
             </div>
         </body>
@@ -77,19 +77,11 @@ proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duple
     const host = req.headers.host || "";
     const parsedUrl = parse(req.url || "/", true);
     const pathname = parsedUrl.pathname || "/";
-    const parts = pathname.split("/");
-    
-    // Multi-layer Identity Detection
-    // 1. Session header injected by proxy logic
-    // 2. Subdomain identifier
-    // 3. Path-based identifier
     const headerId = req.headers['x-codeverse-id'] as string;
     const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
-    const id = headerId || (workspaceHostMatch ? workspaceHostMatch[1] : (parts[2] || "unknown"));
+    const id = headerId || (workspaceHostMatch ? workspaceHostMatch[1] : (pathname.split("/")[2] || "unknown"));
     
-    const type = pathname.startsWith("/android/") ? "android" : (pathname.startsWith("/preview/") ? "preview" : "workspace");
-
-    console.error(`[Proxy Connection Error] ${err.message} for ${type}/${id}`);
+    console.error(`[Proxy Connection Error] ${err.message} for workspace/${id}`);
     
     if (res instanceof ServerResponse) {
         renderProxyError(res, err.message, id);
@@ -99,7 +91,6 @@ proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duple
 proxy.on("proxyReq", (proxyReq, req) => {
     const id = req.headers['x-codeverse-id'] as string;
     const type = req.headers['x-codeverse-type'] as string;
-
     if (id && type) {
         proxyReq.setHeader('x-codeverse-id', id);
         proxyReq.setHeader('x-codeverse-type', type);
@@ -109,12 +100,10 @@ proxy.on("proxyReq", (proxyReq, req) => {
 proxy.on("proxyRes", (proxyRes, req) => {
     const id = req.headers['x-codeverse-id'] as string;
     const type = req.headers['x-codeverse-type'] as string;
-
     if (id && type && proxyRes.headers.location) {
         const originalLocation = proxyRes.headers.location;
         if (originalLocation.startsWith('/') && !originalLocation.startsWith(`/${type}/${id}`)) {
             proxyRes.headers.location = `/${type}/${id}${originalLocation}`;
-            console.log(`[PROXY-REWRITE] Redirect ${originalLocation} -> ${proxyRes.headers.location}`);
         }
     }
 });
@@ -129,41 +118,34 @@ app.prepare()
         const { pathname } = parsedUrl;
         const host = req.headers.host || "";
 
-        // Standard ID Detection for routing
+        // Unified ID Detection for cold-start redirection
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
-        if (workspaceHostMatch) {
-            const id = workspaceHostMatch[1];
-            const port = getNativeWorkspacePort(id) || 8080;
-            req.headers['x-codeverse-id'] = id;
-            req.headers['x-codeverse-type'] = 'workspace';
-            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
-        }
+        const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);
 
-        if (pathname?.startsWith("/workspace/")) {
-            const parts = pathname.split("/");
-            const id = parts[2];
+        if (id) {
+            if (!isNativeWorkspaceRunning(id)) {
+                console.log(`[COLD-START] Workspace ${id} not initialized. Redirecting to boot sequence...`);
+                res.writeHead(302, { Location: `/dashboard/booting?id=${id}` });
+                return res.end();
+            }
+
+            // Real-time port resolution from orchestrator registry
             const port = getNativeWorkspacePort(id) || 8080;
             req.headers['x-codeverse-id'] = id;
             req.headers['x-codeverse-type'] = 'workspace';
-            req.url = "/" + parts.slice(3).join("/");
+            
+            // Rewrite URL for cleaner IDE interaction if needed
+            if (pathname?.startsWith("/workspace/")) {
+                req.url = "/" + pathname.split("/").slice(3).join("/");
+            }
+            
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
 
         if (pathname?.startsWith("/android/")) {
-            const parts = pathname.split("/");
             const port = getAndroidPort() || 6080;
-            req.headers['x-codeverse-id'] = parts[2];
-            req.headers['x-codeverse-type'] = 'android';
-            req.url = "/" + parts.slice(3).join("/");
+            req.url = "/" + pathname.split("/").slice(3).join("/");
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
-        }
-
-        if (pathname?.startsWith("/preview/")) {
-            const parts = pathname.split("/");
-            req.headers['x-codeverse-id'] = parts[2];
-            req.headers['x-codeverse-type'] = 'preview';
-            req.url = "/" + parts.slice(3).join("/");
-            return proxy.web(req, res, { target: `http://127.0.0.1:3000`, changeOrigin: true });
         }
 
         handle(req, res, parsedUrl);
@@ -178,9 +160,13 @@ app.prepare()
         const host = req.headers.host || "";
 
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
-        if (workspaceHostMatch) {
-            const id = workspaceHostMatch[1];
+        const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);
+
+        if (id && isNativeWorkspaceRunning(id)) {
             const port = getNativeWorkspacePort(id) || 8080;
+            if (pathname?.startsWith("/workspace/")) {
+                req.url = "/" + pathname.split("/").slice(3).join("/");
+            }
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
 
@@ -191,17 +177,9 @@ app.prepare()
             return;
         }
 
-        if (pathname?.startsWith("/workspace/")) {
-            const parts = pathname.split("/");
-            const port = getNativeWorkspacePort(parts[2]) || 8080;
-            req.url = "/" + parts.slice(3).join("/");
-            return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
-        }
-
         if (pathname?.startsWith("/android/")) {
-            const parts = pathname.split("/");
             const port = getAndroidPort() || 6080;
-            req.url = "/" + parts.slice(3).join("/");
+            req.url = "/" + pathname.split("/").slice(3).join("/");
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
     });
@@ -254,7 +232,6 @@ app.prepare()
     io.on("connection", (socket) => {
         let shell: pty.IPty | null = null;
         socket.on("terminal:start", ({ cols, rows }: { cols: number; rows: number }) => {
-            // Priority path for HF Spaces (Bash first)
             const shellPath = process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash");
             shell = pty.spawn(shellPath, [], {
                 name: "xterm-color",
@@ -279,7 +256,6 @@ app.prepare()
             inferredUrl = `https://${user.toLowerCase()}-${name.toLowerCase()}.hf.space`;
         }
         const pingUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.HF_URL || inferredUrl;
-
         console.log(`> Ready on ${pingUrl}`);
         
         setInterval(() => {

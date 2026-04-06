@@ -26,7 +26,8 @@ RUN useradd -m -s /bin/bash nodejs && \
 USER nodejs
 WORKDIR /home/nodejs
 
-RUN curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
+RUN ulimit -s $(ulimit -Hs) 2>/dev/null || true && \
+    curl -L https://nixos.org/nix/install | sh -s -- --no-daemon && \
     . ~/.nix-profile/etc/profile.d/nix.sh && \
     nix profile add nixpkgs#cachix nixpkgs#nix nixpkgs#cacert
 
@@ -43,13 +44,17 @@ COPY . .
 RUN npm run build
 
 # 4. Runtime Hardening
-EXPOSE 7860
 ENV PORT=7860
 ENV NODE_ENV=production
 
-# Ensure workspaces are writable in the Space
-RUN mkdir -p /home/nodejs/app/workspaces && chown -R nodejs:nodejs /home/nodejs/app /app
+# Final Provisioning & Permissions
+RUN mkdir -p /home/nodejs/app/workspaces && \
+    mkdir -p /home/nodejs/app/dist && \
+    chown -R nodejs:nodejs /home/nodejs/app /app
 
-# Satisfy system limits for Nix & high-concurrency Node.js (April 2026)
+# Ensure Nix binaries are in place for the runtime user
 USER nodejs
-CMD ["sh", "-c", "ulimit -s 65536 && npm start"]
+
+# Authoritative Entrypoint for HF Spaces April 2026
+# Gracefully handle ulimit restrictions while setting production-grade stack limits
+CMD ["sh", "-c", "ulimit -s $(ulimit -Hs) 2>/dev/null || true && node dist/server.js"]

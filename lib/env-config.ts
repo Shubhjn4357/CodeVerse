@@ -20,7 +20,7 @@ export const ENV_CONFIG = {
 
     // 4. Database & Auth
     AUTH_SECRET: process.env.AUTH_SECRET || process.env.authSecret,
-    TURSO_URL: process.env.TURSO_URL || process.env.turso_url || process.env.database_url || process.env.TURSO_DATABASE_URL || process.env.DB_URL,
+    TURSO_URL: process.env.TURSO_URL || process.env.turso_url || process.env.database_url || process.env.TURSO_DATABASE_URL || process.env.DB_URL || process.env.turso_database_url,
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN || process.env.turso_auth_token || process.env.DB_TOKEN,
 };
 

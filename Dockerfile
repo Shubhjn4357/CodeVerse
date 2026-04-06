@@ -37,7 +37,7 @@ ENV NIX_PATH="nixpkgs=https://github.com/NixOS/nixpkgs/archive/master.tar.gz"
 USER root
 WORKDIR /app
 COPY package*.json ./
-RUN npm install -g npm@11.12.1 && npm install --no-audit --no-fund --quiet
+RUN npm install -g npm@11.12.1 && npm install --no-audit --no-fund --quiet --legacy-peer-deps
 
 COPY . .
 RUN npm run build

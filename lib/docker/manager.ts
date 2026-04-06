@@ -10,7 +10,7 @@ import { HFStorage } from '../hf/storage';
  * Registry for native workspace processes (IDE instances running outside Docker)
  * Map<workspaceId, { pid: number; port: number; process: ChildProcess }>
  */
-const nativeProcesses = new Map<string, { pid: number; port: number; process: ChildProcess }>();
+export const nativeProcesses = new Map<string, { pid: number; port: number; process: ChildProcess }>();
 
 /**
  * Internal Provisioning Bus to multicast logs to concurrent clients.
@@ -21,7 +21,7 @@ export const provisioningBus = new ProvisioningBus();
 /**
  * Map to track active provisioning promises to prevent redundant creation loops.
  */
-const pendingProvisioning = new Map<string, Promise<WorkspaceOperationResult>>();
+export const pendingProvisioning = new Map<string, Promise<WorkspaceOperationResult>>();
 
 /**
  * Checks if a native workspace is currently running.
@@ -36,11 +36,10 @@ export function isNativeWorkspaceRunning(id: string): boolean {
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
 /**
- * Finds an available port in the 8080-8099 range.
+ * Finds an available port in the 8100-9000 range.
  */
 function findAvailablePort(): number {
     const occupiedPorts = Array.from(nativeProcesses.values()).map(p => p.port);
-    // Start from a higher random range to avoid system port 8080 conflicts
     let port = Math.floor(Math.random() * (9000 - 8100) + 8100);
     while (occupiedPorts.includes(port)) {
         port = Math.floor(Math.random() * (9000 - 8100) + 8100);
@@ -129,16 +128,16 @@ export interface WorkspaceOperationResult {
  * PREDICTIVE HYDRATION: Pre-warms Nix profile and SDKs.
  */
 export async function prewarmWorkspace(config: WorkspaceConfig): Promise<void> {
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
-    const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join('/home/node/app/workspaces');
+    const workspacePath = path.join(workspaceRoot, config.id);
     
     if (!fs.existsSync(workspacePath)) {
-        fs.mkdirSync(/*turbopackIgnore: true*/ workspacePath, { recursive: true });
+        fs.mkdirSync(workspacePath, { recursive: true });
     }
 
     const idxConfig = IdxEngine.getIdxConfig(workspacePath);
     if (idxConfig) {
-        // Run Nix sync and onCreate in background if not already warmed
+        // Run Nix sync in background if not already warmed
         IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => {
             provisioningBus.emit(`log:${config.id}`, `[HYDRATE] ${msg}`);
         });
@@ -158,25 +157,25 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
     
     // 0. HF PERSISTENCE: Restore profile from Dataset if available
     await HFStorage.syncFromDataset((msg) => log(msg));
-    HFStorage.startAutoSave(300000); // Start 5m auto-save loop
+    HFStorage.startAutoSave(300000); // 5m auto-save
     
     // 1. Prepare Workspace Directory
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
-    const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
-    const userDataPath = path.join(/*turbopackIgnore: true*/ workspacePath, '.vscode-server');
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join('/home/node/app/workspaces');
+    const workspacePath = path.join(workspaceRoot, config.id);
+    const userDataPath = path.join(workspacePath, '.vscode-server');
     
     if (!fs.existsSync(workspacePath)) {
-        fs.mkdirSync(/*turbopackIgnore: true*/ workspacePath, { recursive: true });
+        fs.mkdirSync(workspacePath, { recursive: true });
         log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
     }
 
-    // 2. IDX Engine: Sync Environment (Async/Non-blocking)
+    // 2. IDX Engine: Sync Environment
     const idxConfig = IdxEngine.getIdxConfig(workspacePath);
     log(`Declarative config detected (Packages: ${idxConfig.packages.length}). Initializing synchronization...`);
     
     await IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
     
-    const flagPath = path.join(/*turbopackIgnore: true*/ workspacePath, '.idx-created');
+    const flagPath = path.join(workspacePath, '.idx-created');
     if (!fs.existsSync(flagPath)) {
         if (idxConfig.onCreate) {
             log(`Executing onCreate lifecycle hook...`);
@@ -185,11 +184,10 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         fs.writeFileSync(flagPath, new Date().toISOString());
     }
 
-
     // 4. Identify Target Port
     const port = findAvailablePort();
 
-    // 5. Spawn Real code-server Process (Linux priority)
+    // 5. Spawn code-server
     const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
     const args = process.platform === 'win32' ? ['code-server'] : [];
     
@@ -241,7 +239,6 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
             if (res.ok) {
                 log(`Handshake verified. Studio Engine Online.`);
 
-                // 🟢 PRIORITY SHIFT: Start hooks ONLY AFTER the IDE is confirmed ready
                 if (idxConfig.onStart) {
                     log(`Executing background onStart lifecycle hooks...`);
                     IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg), true);
@@ -298,6 +295,44 @@ export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<
 
     return await pending;
 }
+
+/**
+ * 🟢 ENGINE WATCHDOG: Background health monitor for native IDE processes.
+ */
+function startEngineWatchdog() {
+    setInterval(async () => {
+        for (const [id, entry] of nativeProcesses.entries()) {
+            try {
+                // 1. Zombie Check
+                try {
+                    process.kill(entry.pid, 0); 
+                } catch {
+                    console.log(`[WATCHDOG] Process ${entry.pid} for ${id} is missing. Pruning.`);
+                    nativeProcesses.delete(id);
+                    continue;
+                }
+
+                // 2. Healthz Polling
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                
+                try {
+                    const res = await fetch(`http://127.0.0.1:${entry.port}`, { signal: controller.signal });
+                    if (!res.ok) throw new Error('Unhealthy');
+                } catch {
+                    console.warn(`[WATCHDOG] IDE ${id} (Port ${entry.port}) is non-responsive.`);
+                    // Optional: force restart if unhealthy for multiple cycles
+                } finally {
+                    clearTimeout(timeoutId);
+                }
+            } catch (e) {
+                console.error(`[WATCHDOG:ERR] ${e}`);
+            }
+        }
+    }, 60000);
+}
+
+startEngineWatchdog();
 
 /**
  * Standardized stop method.

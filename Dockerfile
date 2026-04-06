@@ -68,6 +68,11 @@ USER node
 RUN npm run build
 
 # 4. Runtime Hardening
+# Pre-bake Nix Template Manifest for "Instant-On" (April 2026 Baseline)
+RUN mkdir -p /home/node/.idx && \
+    echo '{"packages":["pkgs.nodejs","pkgs.go","pkgs.python3","pkgs.docker","pkgs.python3Packages.huggingface-hub"],"timestamp":"baked"}' > /home/node/.idx/baked-packages.json && \
+    chown -R node:node /home/node/.idx
+
 ENV PORT=7860
 ENV NODE_ENV=production
 

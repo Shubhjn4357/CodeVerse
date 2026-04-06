@@ -55,16 +55,13 @@ export class HFStorage {
             const tmpDir = '/tmp/hf-sync';
             if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-            // 2026 Resilience: try 'huggingface-cli' then fallback to newer 'hf' binary
-            const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN}) || (hf download ${this.HF_DATASET_ID} profile.tar.gz --local-dir ${tmpDir} --token ${this.HF_TOKEN})`;
-            await this.execAsync(cmd, onLog);
-            
-            const tarPath = path.join(tmpDir, 'profile.tar.gz');
-            if (fs.existsSync(tarPath)) {
-                onLog?.(`[HF:STORAGE] Restoring Nix profile...`);
-                await this.execAsync(`tar -xzf ${tarPath} -C ${process.env.HOME || '/home/node'}`, onLog);
-                onLog?.(`[HF:STORAGE] Profile restored successfully.`);
-            }
+        // 🟢 DELTA SYNCING: Use 'download' for raw folder syncing instead of tarballs
+        // This allows HF CLI to perform block-level diffing internally.
+        const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} --local-dir ${process.env.HOME || '/home/node'} --local-dir-use-symlinks False --token ${this.HF_TOKEN} --include "*" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*") || (hf download ${this.HF_DATASET_ID} --local-dir ${process.env.HOME || '/home/node'} --token ${this.HF_TOKEN})`;
+        
+        onLog?.(`[HF:STORAGE] Restoring differential profile from '${this.HF_DATASET_ID}'...`);
+        await this.execAsync(cmd, onLog);
+        onLog?.(`[HF:STORAGE] Profile restoration complete.`);
         } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : String(e);
             onLog?.(`[ERROR] Profile restoration failed: ${errorMessage}`);
@@ -79,16 +76,13 @@ export class HFStorage {
 
         onLog?.(`[HF:STORAGE] Saving persistent profile to '${this.HF_DATASET_ID}'...`);
         try {
-            const tmpDir = '/tmp/hf-sync';
-            if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
-
-            const tarPath = path.join(tmpDir, 'profile.tar.gz');
-            await this.execAsync(`tar -czf ${tarPath} -C ${process.env.HOME || '/home/node'} .nix-profile`, onLog);
-            // 2026 Resilience: try 'huggingface-cli' then fallback to newer 'hf' binary
-            const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN}) || (hf upload ${this.HF_DATASET_ID} ${tarPath} profile.tar.gz --token ${this.HF_TOKEN})`;
-            await this.execAsync(cmd, onLog);
-            
-            onLog?.(`[HF:STORAGE] Profile synchronized successfully.`);
+        // 🟢 DELTA SYNCING: Use 'upload-folder' for granular updates
+        // This skips files that haven't changed, making uploads nearly instant for small edits.
+        const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${process.env.HOME || '/home/node'} . --token ${this.HF_TOKEN} --message "CodeVerse Sync: ${new Date().toISOString()}" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*") || (hf upload ${this.HF_DATASET_ID} ${process.env.HOME || '/home/node'} . --token ${this.HF_TOKEN})`;
+        
+        onLog?.(`[HF:STORAGE] Performing differential backup to '${this.HF_DATASET_ID}'...`);
+        await this.execAsync(cmd, onLog);
+        onLog?.(`[HF:STORAGE] Profile backup successful.`);
         } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : String(e);
             onLog?.(`[ERROR] Profile synchronization failed: ${errorMessage}`);

@@ -103,11 +103,13 @@ class IdxEngine {
                 log(`[WARN] Cachix setup bypassed. Falling back to default binary cache.`);
             }
         }
-        // 🟢 HYDRATION GUARD: Skip synchronization if packages haven't changed
+        // 🟢 HYDRATION GUARD: Skip synchronization if packages haven't changed or if pre-baked baseline is available
         const idxDir = path_1.default.join(workspacePath, '.idx');
         if (!fs_1.default.existsSync(idxDir))
             fs_1.default.mkdirSync(idxDir, { recursive: true });
         const manifestPath = path_1.default.join(idxDir, 'packages.json');
+        const bakedManifestPath = '/home/node/.idx/baked-packages.json';
+        // 1. Check local manifest
         if (fs_1.default.existsSync(manifestPath)) {
             try {
                 const manifest = JSON.parse(fs_1.default.readFileSync(manifestPath, 'utf8'));
@@ -120,6 +122,21 @@ class IdxEngine {
             }
             catch (e) {
                 log(`[WARN] Manifest corruption detected. Forcing re-sync.`);
+            }
+        }
+        // 2. Check pre-baked manifest (for default configs)
+        const sortedDefault = [...IdxEngine.getDefaultConfig().packages].sort();
+        const sortedCurrent = [...config.packages].sort();
+        const isDefaultConfig = JSON.stringify(sortedCurrent) === JSON.stringify(sortedDefault);
+        if (isDefaultConfig && fs_1.default.existsSync(bakedManifestPath)) {
+            log(`Pre-baked baseline detected. Hydrating instance instantly...`);
+            try {
+                fs_1.default.copyFileSync(bakedManifestPath, manifestPath);
+                log(`Hydration complete. Workspace ready.`);
+                return;
+            }
+            catch (e) {
+                log(`[WARN] Hydration failed: ${e instanceof Error ? e.message : String(e)}`);
             }
         }
         // CACHIX ...

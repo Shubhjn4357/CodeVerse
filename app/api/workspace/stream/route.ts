@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { startWorkspaceContainer, provisioningBus } from '@/lib/docker/manager';
+import { provisioningBus, isNativeWorkspaceRunning, nativeProcesses, pendingProvisioning, WorkspaceOperationResult } from '@/lib/docker/manager';
 import { auth } from '@/auth';
 import { db } from '@/lib/db';
 
@@ -44,36 +44,46 @@ export async function GET(req: NextRequest) {
                 }
             };
 
-            // MULTICAST: Listen to existing provisioning session if one is already active
+            // 1. ATTACHMENT: Listen to existing provisioning session if one is already active
             const onLog = (msg: string) => sendEvent('log', msg);
             provisioningBus.on(`log:${id}`, onLog);
 
-            try {
-                // Initialize workspace and pipe logs directly from the Docker builder engine to SSE client
-                // startWorkspaceContainer is now atomic; it will return the existing promise if already booting.
-                const result = await startWorkspaceContainer({ 
-                    id: id as string, 
-                    userId: userId,
-                    projectName: projectName,
-                    withAndroidEmulator: withAndroid, 
-                    onLog: (msg) => {
-                        // sendEvent('log', msg); // Already handled by the ProvisioningBus multicast
-                    } 
-                });
-                
-                // Completed
+            // 2. READY LISTENER: If a ready event fires while we wait, pass it through
+            const onReady = (res: WorkspaceOperationResult) => {
                 sendEvent('ready', {
-                    success: result.success,
-                    port: result.port,
-                    androidPort: result.androidPort,
-                    appetizeUrl: result.appetizeUrl,
+                    success: res.success,
+                    port: res.port,
+                    androidPort: res.androidPort,
+                    appetizeUrl: res.appetizeUrl,
                 });
-            } catch (error: unknown) {
-                const e = error as Error;
-                sendEvent('error', { message: e.message || "Failed to start workspace." });
-            } finally {
                 provisioningBus.off(`log:${id}`, onLog);
+                provisioningBus.off(`ready:${id}`, onReady);
                 controller.close();
+            };
+            provisioningBus.on(`ready:${id}`, onReady);
+
+            // 3. IMMEDIATE SYNC: If workspace is ALREADY running, send ready and finish
+            if (isNativeWorkspaceRunning(id)) {
+                sendEvent('ready', {
+                    success: true,
+                    port: nativeProcesses.get(id)!.port,
+                });
+                provisioningBus.off(`log:${id}`, onLog);
+                provisioningBus.off(`ready:${id}`, onReady);
+                controller.close();
+                return;
+            }
+
+            // 4. PERSISTENCE: If not active and not pending, wait for a potential POST start
+            if (!pendingProvisioning.has(id)) {
+                setTimeout(() => {
+                    try {
+                        if (!pendingProvisioning.has(id) && !isNativeWorkspaceRunning(id)) {
+                           sendEvent('error', { message: "No active provisioning session. Start workspace first." });
+                           controller.close();
+                        }
+                    } catch {}
+                }, 10000); // 10s wait for a POST start
             }
         }
     });

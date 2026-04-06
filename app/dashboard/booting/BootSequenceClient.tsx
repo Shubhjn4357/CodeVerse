@@ -38,6 +38,13 @@ export default function BootSequenceClient() {
         setStatus("booting");
         setLogs([]);
 
+        // 🟢 TRIGGER: Explicitly start the workspace via POST
+        fetch("/api/workspace", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "start", id, withAndroidEmulator: withAndroid })
+        }).catch(err => addLog(`[IDX:ERR] Failed to initiate launch: ${err.message}`));
+
         const eventSource = new EventSource(`/api/workspace/stream?id=${id}&withAndroid=${withAndroid}`);
         eventSourceRef.current = eventSource;
 

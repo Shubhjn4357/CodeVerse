@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.dockerManager = exports.DockerManager = exports.provisioningBus = void 0;
+exports.dockerManager = exports.DockerManager = exports.pendingProvisioning = exports.provisioningBus = exports.nativeProcesses = void 0;
 exports.isNativeWorkspaceRunning = isNativeWorkspaceRunning;
 exports.isDockerAvailable = isDockerAvailable;
 exports.stopNativeWorkspace = stopNativeWorkspace;
@@ -23,7 +23,7 @@ const storage_1 = require("../hf/storage");
  * Registry for native workspace processes (IDE instances running outside Docker)
  * Map<workspaceId, { pid: number; port: number; process: ChildProcess }>
  */
-const nativeProcesses = new Map();
+exports.nativeProcesses = new Map();
 /**
  * Internal Provisioning Bus to multicast logs to concurrent clients.
  */
@@ -33,23 +33,22 @@ exports.provisioningBus = new ProvisioningBus();
 /**
  * Map to track active provisioning promises to prevent redundant creation loops.
  */
-const pendingProvisioning = new Map();
+exports.pendingProvisioning = new Map();
 /**
  * Checks if a native workspace is currently running.
  */
 function isNativeWorkspaceRunning(id) {
-    return nativeProcesses.has(id);
+    return exports.nativeProcesses.has(id);
 }
 /**
  * Helper for async delays.
  */
 const delay = (ms) => new Promise(res => setTimeout(res, ms));
 /**
- * Finds an available port in the 8080-8099 range.
+ * Finds an available port in the 8100-9000 range.
  */
 function findAvailablePort() {
-    const occupiedPorts = Array.from(nativeProcesses.values()).map(p => p.port);
-    // Start from a higher random range to avoid system port 8080 conflicts
+    const occupiedPorts = Array.from(exports.nativeProcesses.values()).map(p => p.port);
     let port = Math.floor(Math.random() * (9000 - 8100) + 8100);
     while (occupiedPorts.includes(port)) {
         port = Math.floor(Math.random() * (9000 - 8100) + 8100);
@@ -80,16 +79,16 @@ async function isDockerAvailable() {
  * Stops a native workspace process.
  */
 async function stopNativeWorkspace(id) {
-    const entry = nativeProcesses.get(id);
+    const entry = exports.nativeProcesses.get(id);
     if (entry) {
         try {
             entry.process.kill();
-            nativeProcesses.delete(id);
+            exports.nativeProcesses.delete(id);
             return true;
         }
         catch (e) {
             console.error(`[MANAGER] Failed to kill code-server ${id}:`, e);
-            nativeProcesses.delete(id);
+            exports.nativeProcesses.delete(id);
         }
     }
     return false;
@@ -99,7 +98,7 @@ async function stopNativeWorkspace(id) {
  */
 function getNativeWorkspacePort(id) {
     var _a;
-    return (_a = nativeProcesses.get(id)) === null || _a === void 0 ? void 0 : _a.port;
+    return (_a = exports.nativeProcesses.get(id)) === null || _a === void 0 ? void 0 : _a.port;
 }
 /**
  * Returns the global unified Android VNC port.
@@ -111,14 +110,14 @@ function getAndroidPort() {
  * PREDICTIVE HYDRATION: Pre-warms Nix profile and SDKs.
  */
 async function prewarmWorkspace(config) {
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
-    const workspacePath = path_1.default.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join('/home/node/app/workspaces');
+    const workspacePath = path_1.default.join(workspaceRoot, config.id);
     if (!fs_1.default.existsSync(workspacePath)) {
-        fs_1.default.mkdirSync(/*turbopackIgnore: true*/ workspacePath, { recursive: true });
+        fs_1.default.mkdirSync(workspacePath, { recursive: true });
     }
     const idxConfig = idx_engine_1.IdxEngine.getIdxConfig(workspacePath);
     if (idxConfig) {
-        // Run Nix sync and onCreate in background if not already warmed
+        // Run Nix sync in background if not already warmed
         idx_engine_1.IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => {
             exports.provisioningBus.emit(`log:${config.id}`, `[HYDRATE] ${msg}`);
         });
@@ -136,20 +135,20 @@ async function performProvisioning(config) {
     log(`Provisioning hermetic environment for '${config.projectName}'...`);
     // 0. HF PERSISTENCE: Restore profile from Dataset if available
     await storage_1.HFStorage.syncFromDataset((msg) => log(msg));
-    storage_1.HFStorage.startAutoSave(300000); // Start 5m auto-save loop
+    storage_1.HFStorage.startAutoSave(300000); // 5m auto-save
     // 1. Prepare Workspace Directory
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
-    const workspacePath = path_1.default.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
-    const userDataPath = path_1.default.join(/*turbopackIgnore: true*/ workspacePath, '.vscode-server');
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join('/home/node/app/workspaces');
+    const workspacePath = path_1.default.join(workspaceRoot, config.id);
+    const userDataPath = path_1.default.join(workspacePath, '.vscode-server');
     if (!fs_1.default.existsSync(workspacePath)) {
-        fs_1.default.mkdirSync(/*turbopackIgnore: true*/ workspacePath, { recursive: true });
+        fs_1.default.mkdirSync(workspacePath, { recursive: true });
         log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
     }
-    // 2. IDX Engine: Sync Environment (Async/Non-blocking)
+    // 2. IDX Engine: Sync Environment
     const idxConfig = idx_engine_1.IdxEngine.getIdxConfig(workspacePath);
     log(`Declarative config detected (Packages: ${idxConfig.packages.length}). Initializing synchronization...`);
     await idx_engine_1.IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
-    const flagPath = path_1.default.join(/*turbopackIgnore: true*/ workspacePath, '.idx-created');
+    const flagPath = path_1.default.join(workspacePath, '.idx-created');
     if (!fs_1.default.existsSync(flagPath)) {
         if (idxConfig.onCreate) {
             log(`Executing onCreate lifecycle hook...`);
@@ -159,7 +158,7 @@ async function performProvisioning(config) {
     }
     // 4. Identify Target Port
     const port = findAvailablePort();
-    // 5. Spawn Real code-server Process (Linux priority)
+    // 5. Spawn code-server
     const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
     const args = process.platform === 'win32' ? ['code-server'] : [];
     const baseArgs = [
@@ -196,7 +195,7 @@ async function performProvisioning(config) {
         log(`[IDE:EXIT] IDE process died with code ${code} (Signal: ${signal})`);
     });
     // 6. Register in active pool
-    nativeProcesses.set(config.id, { pid: child.pid, port, process: child });
+    exports.nativeProcesses.set(config.id, { pid: child.pid, port, process: child });
     // 7. Handshake Loop
     let attempts = 0;
     while (attempts < 60) {
@@ -204,7 +203,6 @@ async function performProvisioning(config) {
             const res = await fetch(`http://127.0.0.1:${port}`);
             if (res.ok) {
                 log(`Handshake verified. Studio Engine Online.`);
-                // 🟢 PRIORITY SHIFT: Start hooks ONLY AFTER the IDE is confirmed ready
                 if (idxConfig.onStart) {
                     log(`Executing background onStart lifecycle hooks...`);
                     idx_engine_1.IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg), true);
@@ -231,10 +229,10 @@ async function performProvisioning(config) {
         }
     }
     log(`[FATAL] Handshake timeout on 127.0.0.1:${port}.`);
-    const entry = nativeProcesses.get(config.id);
+    const entry = exports.nativeProcesses.get(config.id);
     if (entry) {
         entry.process.kill();
-        nativeProcesses.delete(config.id);
+        exports.nativeProcesses.delete(config.id);
     }
     const errResult = { success: false, error: "IDE_HANDSHAKE_TIMEOUT" };
     exports.provisioningBus.emit(`error:${config.id}`, errResult);
@@ -244,22 +242,61 @@ async function performProvisioning(config) {
  * Workspace provisioner with ATOMIC single-instance locking.
  */
 async function startWorkspaceContainer(config) {
-    if (nativeProcesses.has(config.id)) {
+    if (exports.nativeProcesses.has(config.id)) {
         return {
             success: true,
             containerId: `native-${config.id}`,
-            port: nativeProcesses.get(config.id).port
+            port: exports.nativeProcesses.get(config.id).port
         };
     }
-    let pending = pendingProvisioning.get(config.id);
+    let pending = exports.pendingProvisioning.get(config.id);
     if (!pending) {
         pending = performProvisioning(config).finally(() => {
-            pendingProvisioning.delete(config.id);
+            exports.pendingProvisioning.delete(config.id);
         });
-        pendingProvisioning.set(config.id, pending);
+        exports.pendingProvisioning.set(config.id, pending);
     }
     return await pending;
 }
+/**
+ * 🟢 ENGINE WATCHDOG: Background health monitor for native IDE processes.
+ */
+function startEngineWatchdog() {
+    setInterval(async () => {
+        for (const [id, entry] of exports.nativeProcesses.entries()) {
+            try {
+                // 1. Zombie Check
+                try {
+                    process.kill(entry.pid, 0);
+                }
+                catch (_a) {
+                    console.log(`[WATCHDOG] Process ${entry.pid} for ${id} is missing. Pruning.`);
+                    exports.nativeProcesses.delete(id);
+                    continue;
+                }
+                // 2. Healthz Polling
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                try {
+                    const res = await fetch(`http://127.0.0.1:${entry.port}`, { signal: controller.signal });
+                    if (!res.ok)
+                        throw new Error('Unhealthy');
+                }
+                catch (_b) {
+                    console.warn(`[WATCHDOG] IDE ${id} (Port ${entry.port}) is non-responsive.`);
+                    // Optional: force restart if unhealthy for multiple cycles
+                }
+                finally {
+                    clearTimeout(timeoutId);
+                }
+            }
+            catch (e) {
+                console.error(`[WATCHDOG:ERR] ${e}`);
+            }
+        }
+    }, 60000);
+}
+startEngineWatchdog();
 /**
  * Standardized stop method.
  */

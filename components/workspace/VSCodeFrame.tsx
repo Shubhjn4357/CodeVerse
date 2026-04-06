@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, ServerCrash, Smartphone } from "lucide-react";
 import { EmulatorPane } from "./EmulatorPane";
 import { useEmulator } from "@/hooks/useEmulator";
+import { Loader2, ServerCrash, Smartphone } from "lucide-react";
 
 interface VSCodeFrameProps {
     workspaceId: string;
@@ -44,8 +44,8 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                 } else {
                     setStatus("error");
                 }
-            } catch {
-                setStatus("error");
+            } catch (e: unknown) {
+                console.error(`[WATCHDOG:ERR] ${e instanceof Error ? e.message : String(e)}`);
             }
             events.close();
         };
@@ -69,14 +69,21 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
 
     if (status === "loading") {
         return (
-            <div className="flex flex-col items-center pt-24 w-full h-full bg-(--bg) text-(--text-muted) space-y-4">
-                <Loader2 size={32} className="animate-spin text-(--accent)" />
-                <p className="animate-pulse font-medium">Provisioning CodeVerse Engine...</p>
-                <div className="text-xs opacity-60">Initializing code-server, binding LSPs, and mapping volumes.</div>
+            <div className="flex flex-col items-center pt-24 w-full h-full bg-[#050505] text-(--text-muted) space-y-6 overflow-hidden relative">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(57,211,83,0.03)_0%,transparent_70%)] pointer-events-none" />
+                
+                <div className="z-10 flex flex-col items-center gap-4">
+                    <Loader2 size={32} className="animate-spin text-(--accent)" />
+                    <p className="text-sm font-bold tracking-widest uppercase animate-pulse text-(--accent)">Syncing Environment...</p>
+                </div>
 
-                <div className="w-full max-w-2xl bg-black rounded-xl p-6 font-mono text-[11px] overflow-y-auto h-72 mt-8 shadow-2xl border border-gray-800/50 flex flex-col items-start text-left">
+                <div className="w-full max-w-2xl bg-[#0a0a0a] rounded-xl p-4 font-mono text-[11px] overflow-y-auto h-72 z-10 border border-[#222] shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] relative group">
+                    <div className="absolute top-4 right-4 text-[#333] group-hover:text-zinc-600 transition-colors pointer-events-none uppercase text-[10px] tracking-widest font-bold flex items-center gap-2">
+                        <Smartphone size={12} />
+                        IDX Studio Engine
+                    </div>
                     {buildLogs.map((log, i) => (
-                        <div key={i} className="text-gray-400 w-full break-all mb-1">
+                        <div key={i} className="mb-0.5 leading-relaxed tracking-tight text-zinc-400">
                             <span className="text-(--accent) mr-2 opacity-50">❯</span>
                             {log}
                         </div>
@@ -84,7 +91,9 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                     <div className="animate-pulse text-(--accent) mt-2 font-bold">_</div>
                 </div>
 
-                <div className="text-[10px] opacity-40 mt-4 italic">Note: Android container initialization may take up to 2 minutes...</div>
+                <div className="text-[10px] opacity-40 mt-4 italic z-10 font-mono tracking-tighter">
+                   [ORCHESTRATOR] Binding LSPs, mapping virtual volumes, and hydrating Nix profile.
+                </div>
             </div>
         );
     }

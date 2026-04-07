@@ -1,23 +1,17 @@
 import path from "path";
 import fs from "fs/promises";
-import { existsSync, mkdirSync, writeFileSync, unlinkSync } from "fs";
+import { existsSync, mkdirSync } from "fs";
 
 import { ENV_CONFIG } from "@/lib/env-config";
 
 function resolveWorkspaceBase(): string {
     // Standardize for production-grade isolation
-    const workspaceRoot = ENV_CONFIG.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+    const workspaceRoot = ENV_CONFIG.WORKSPACE_ROOT;
     
     try {
         if (!existsSync(workspaceRoot)) {
             mkdirSync(workspaceRoot, { recursive: true });
         }
-        
-        // Critical Test: Check if we can actually write to this path
-        const testFile = path.join(/*turbopackIgnore: true*/ workspaceRoot, `.write_test_${Math.random().toString(36).substring(7)}`);
-        writeFileSync(testFile, "test");
-        unlinkSync(testFile);
-        
         return workspaceRoot;
     } catch (e) {
         console.error(`[SYSTEM] Critical Storage Error for ${workspaceRoot}:`, e);

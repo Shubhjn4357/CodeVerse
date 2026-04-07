@@ -176,6 +176,8 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
     
     if (!fs.existsSync(workspacePath)) {
         fs.mkdirSync(workspacePath, { recursive: true });
+        // Store full ID for reliable reconnection after server restarts
+        fs.writeFileSync(path.join(workspacePath, '.codeverse-id'), config.id); 
         log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
     }
 
@@ -304,6 +306,49 @@ export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<
     }
 
     return await pending;
+}
+
+/**
+ * 🛠️ SELF-HEALING: Scans for running code-server instances to repopulate the proxy map.
+ * This allows the IDE to survive server restarts or cold boots by probing active ports.
+ */
+export async function reconnectRunningWorkspaces() {
+    const { execSync } = require('child_process');
+    const workspaceRoot = process.env.WORKSPACE_ROOT || '/home/node/w';
+    
+    console.log(`[BOOT] Probing filesystem segment: ${workspaceRoot} for existing sessions...`);
+    try {
+        // Find all code-server processes
+        const output = execSync("ps aux | grep code-server | grep -v grep").toString();
+        const lines = output.split('\n');
+        
+        for (const line of lines) {
+            // Looking for: ... --bind-addr 127.0.0.1:8548 ... /home/node/w/44c7597c
+            const bindMatch = line.match(/--bind-addr 127\.0\.0\.1:(\d+)/);
+            const pathMatch = line.match(new RegExp(`${workspaceRoot}/([a-zA-Z0-9]+)`));
+            
+            if (bindMatch && pathMatch) {
+                const port = parseInt(bindMatch[1]);
+                const shortId = pathMatch[1];
+                const fullPath = path.join(workspaceRoot, shortId);
+                const idFile = path.join(fullPath, '.codeverse-id');
+                
+                if (fs.existsSync(idFile)) {
+                    const fullId = fs.readFileSync(idFile, 'utf-8').trim();
+                    if (!nativeProcesses.has(fullId)) {
+                        console.log(`[RECONNECT] Identified active IDE ${fullId.slice(0,8)}... on port ${port}. Restoring proxy link.`);
+                        nativeProcesses.set(fullId, { 
+                            pid: 0, // Placeholder for PID
+                            port, 
+                            process: { kill: () => { try { execSync(`fuser -k ${port}/tcp`); } catch {} } } as any 
+                        });
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        // No processes found or ps failed
+    }
 }
 
 /**

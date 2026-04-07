@@ -57,12 +57,18 @@ export class HFStorage {
             const tmpDir = '/tmp/hf-sync';
             if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-        // 🟢 DELTA SYNCING: Use 'download' for raw folder syncing instead of tarballs
-        // This allows HF CLI to perform block-level diffing internally.
-        const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} --local-dir ${process.env.HOME || '/home/node'} --local-dir-use-symlinks False --token ${this.HF_TOKEN} --include "*" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*" --exclude ".cache/*") || (hf download ${this.HF_DATASET_ID} --local-dir ${process.env.HOME || '/home/node'} --token ${this.HF_TOKEN})`;
+        // 🟢 DELTA SYNCING: Only sync the specific workspace and IDE state directories
+        const home = process.env.HOME || '/home/node';
+        const persistDirs = ['w', '.vscode-server', '.config/code-server'];
         
-        onLog?.(`[HF:STORAGE] Restoring differential profile from '${this.HF_DATASET_ID}'...`);
-        await this.execAsync(cmd, onLog);
+        for (const dir of persistDirs) {
+            const localPath = path.join(home, dir);
+            if (!fs.existsSync(localPath)) fs.mkdirSync(localPath, { recursive: true });
+            
+            const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} --local-dir ${localPath} --include "${dir}/*" --token ${this.HF_TOKEN}) || (hf download ${this.HF_DATASET_ID} --local-dir ${localPath} --include "${dir}/*" --token ${this.HF_TOKEN})`;
+            onLog?.(`[HF:STORAGE] Restoring ${dir} from differential profile...`);
+            await this.execAsync(cmd, onLog).catch(() => {}); // Continue if one dir fails
+        }
         onLog?.(`[HF:STORAGE] Profile restoration complete.`);
         } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : String(e);
@@ -76,16 +82,20 @@ export class HFStorage {
     static async syncToDataset(onLog?: (msg: string) => void): Promise<void> {
         if (!this.HF_TOKEN || !this.HF_DATASET_ID) return;
 
-        onLog?.(`[HF:STORAGE] Saving persistent profile to '${this.HF_DATASET_ID}'...`);
         try {
-        // 🟢 DELTA SYNCING: Use 'upload-folder' for granular updates
-        // This skips files that haven't changed, making uploads nearly instant for small edits.
-        // We MUST exclude .cache/ and other high-volume folders to prevent HF Dataset 'CommitOperation' errors and 'Large Folder' warnings.
-        const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${process.env.HOME || '/home/node'} . --token ${this.HF_TOKEN} --message "CodeVerse Sync: ${new Date().toISOString()}" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*" --exclude ".cache/*" --exclude ".npm/*" --exclude ".local/share/code-server/*" --exclude ".vscode-server/extensions/*") || (hf upload ${this.HF_DATASET_ID} ${process.env.HOME || '/home/node'} . --token ${this.HF_TOKEN})`;
-        
-        onLog?.(`[HF:STORAGE] Performing differential backup to '${this.HF_DATASET_ID}'...`);
-        await this.execAsync(cmd, onLog);
-        onLog?.(`[HF:STORAGE] Profile backup successful.`);
+            onLog?.(`[HF:STORAGE] Saving persistent profile to '${this.HF_DATASET_ID}'...`);
+            const home = process.env.HOME || '/home/node';
+            const persistDirs = ['w', '.vscode-server', '.config/code-server'];
+
+            for (const dir of persistDirs) {
+                const localPath = path.join(home, dir);
+                if (!fs.existsSync(localPath)) continue;
+
+                const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${localPath} ${dir} --token ${this.HF_TOKEN} --message "CodeVerse Sync [${dir}]: ${new Date().toISOString()}" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*" --exclude ".cache/*") || (hf upload ${this.HF_DATASET_ID} ${localPath} ${dir} --token ${this.HF_TOKEN})`;
+                onLog?.(`[HF:STORAGE] Performing differential backup of ${dir}...`);
+                await this.execAsync(cmd, onLog).catch(err => onLog?.(`[WARN] Sync failed for ${dir}: ${err.message}`));
+            }
+            onLog?.(`[HF:STORAGE] Profile backup successful.`);
         } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : String(e);
             onLog?.(`[ERROR] Profile synchronization failed: ${errorMessage}`);

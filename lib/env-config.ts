@@ -6,7 +6,7 @@ export const ENV_CONFIG = {
     // 1. Storage & Persistence
     HF_TOKEN: process.env.HF_TOKEN || process.env.hfToken || process.env.HF_SPACE || process.env.HuggingFaceToken,
     HF_DATASET_ID: process.env.HF_DATASET_ID || process.env.hfDataset || process.env.HF_DATASET,
-    WORKSPACE_ROOT: process.env.WORKSPACE_ROOT || '/home/node/app/workspaces',
+    WORKSPACE_ROOT: process.env.WORKSPACE_ROOT || '/home/node/w',
 
     // 2. Build Acceleration
     CACHIX_CACHE_NAME: process.env.CACHIX_CACHE_NAME || 'code-nix',
@@ -22,6 +22,8 @@ export const ENV_CONFIG = {
     AUTH_SECRET: process.env.AUTH_SECRET || process.env.authSecret,
     TURSO_URL: process.env.TURSO_URL || process.env.turso_url || process.env.database_url || process.env.TURSO_DATABASE_URL || process.env.DB_URL || process.env.turso_database_url,
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN || process.env.turso_auth_token || process.env.DB_TOKEN,
+    TMPDIR: '/tmp',
+    HF_HOME: '/tmp/.cache/huggingface',
 };
 
 /**

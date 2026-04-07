@@ -12,10 +12,17 @@ import * as pty from "node-pty";
 import os from "os";
 import { Duplex } from "stream";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
-import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning, prewarmWorkspace } from "./lib/docker/manager";
+import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces } from "./lib/docker/manager";
 import { initDb } from "./lib/db/schema";
-import { validateEnvironment } from "./lib/env-config";
+import { ENV_CONFIG, validateEnvironment } from "./lib/env-config";
 import httpProxy from "http-proxy";
+
+/**
+ * PRODUCTION HARDENING (April 2026): Force writable temp paths for HF Spaces.
+ */
+process.env.TMPDIR = '/tmp';
+process.env.HF_HOME = '/tmp/.cache/huggingface';
+if (!process.env.HOME) process.env.HOME = '/home/node';
 
 const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev });
@@ -142,7 +149,9 @@ app.prepare()
                 .catch(err => console.error("[BOOT] Warmup failed:", err));
         })
         .catch(err => console.error("[BOOT] Database init failed:", err));
-        
+    
+    // 🛠️ Self-Healing: Reconnect to orphans from previous instance
+    reconnectRunningWorkspaces();
     startAutoSleepCron();
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {

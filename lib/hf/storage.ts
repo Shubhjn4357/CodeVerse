@@ -103,11 +103,16 @@ export class HFStorage {
     }
 
     /**
-     * Starts the periodic persistence interval.
+     * Starts the periodic persistence interval (Singleton Heartbeat).
      */
-    static startAutoSave(intervalMs: number = 300000) { // 5 minutes default
+    private static autoSaveStarted = false;
+    static startAutoSave(intervalMs: number = 300000) {
+        if (this.autoSaveStarted) return;
+        this.autoSaveStarted = true;
+        
+        console.log(`[HF:STORAGE] Persistence heartbeat initialized (Interval: ${intervalMs}ms)`);
         setInterval(async () => {
-            await this.syncToDataset((msg) => console.log(msg));
+            await this.syncToDataset((msg) => console.log(msg)).catch(() => {});
         }, intervalMs);
     }
 }

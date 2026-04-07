@@ -191,7 +191,6 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         } catch (e) {
             log(`[WARN] Persistent profile restoration failed: ${e instanceof Error ? e.message : String(e)}. Proceeding with clean environment.`);
         }
-        HFStorage.startAutoSave(300000); // 5m auto-save
     
     // 1. Prepare Workspace Directory
     const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');

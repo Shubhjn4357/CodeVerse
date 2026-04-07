@@ -1,3 +1,9 @@
+/**
+ * 🛰️ GLOBAL STABILIZATION (April 2026): Catch unhandled errors that cause HF Space restarts.
+ */
+process.on('uncaughtException', (err) => { console.error('[FATAL:EXCEPTION]', err); });
+process.on('unhandledRejection', (reason) => { console.error('[FATAL:REJECTION]', reason); });
+
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import next from "next";
 import { Server } from "socket.io";
@@ -14,6 +20,7 @@ import { Duplex } from "stream";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
 import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces, nativeProcesses } from "./lib/docker/manager";
 import { initDb } from "./lib/db/schema";
+import { HFStorage } from "./lib/hf/storage";
 import { ENV_CONFIG, validateEnvironment } from "./lib/env-config";
 import httpProxy from "http-proxy";
 
@@ -151,7 +158,10 @@ app.prepare()
         .catch(err => console.error("[BOOT] Database init failed:", err));
     
     // 🛠️ Self-Healing: Reconnect to orphans from previous instance
-    reconnectRunningWorkspaces();
+    reconnectRunningWorkspaces().catch(err => console.error("[BOOT] Reconnection failed:", err));
+    
+    // 🛡️ Persistence: Global heartbeat (starts once)
+    HFStorage.startAutoSave(300000); 
     startAutoSleepCron();
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
@@ -179,7 +189,6 @@ app.prepare()
                 
                 return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
             } else if (!pathname?.startsWith("/api/")) {
-                console.log(`[PROXY:DEBUG] Workspace ${id} not found in nativeProcesses. Available:`, Array.from(nativeProcesses.keys()));
                 // EXCLUSIVE FIX (April 2026): Prevent Next.js 404 fallthrough
                 // Only show for main workspace routes, let API routes pass to Next.js for provisioning.
                 res.writeHead(503, { 'Content-Type': 'text/html', 'Retry-After': '5' });

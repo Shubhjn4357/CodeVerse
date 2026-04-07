@@ -27,10 +27,10 @@ export async function loadAgentContext(): Promise<{
 
     // Try local .agent (lowercase) then parent-level .Agent
     const candidates = [
-        path.join(WORKSPACE_ROOT, ".agent", "memory"),
-        path.join(WORKSPACE_ROOT, ".agent"),
-        path.join(path.dirname(WORKSPACE_ROOT), ".Agent", "memory"),
-        path.join(path.dirname(WORKSPACE_ROOT), ".Agent"),
+        path.join(/*turbopackIgnore: true*/ WORKSPACE_ROOT, ".agent", "memory"),
+        path.join(/*turbopackIgnore: true*/ WORKSPACE_ROOT, ".agent"),
+        path.join(/*turbopackIgnore: true*/ path.dirname(WORKSPACE_ROOT), ".Agent", "memory"),
+        path.join(/*turbopackIgnore: true*/ path.dirname(WORKSPACE_ROOT), ".Agent"),
     ];
 
     for (const dir of candidates) {
@@ -39,14 +39,14 @@ export async function loadAgentContext(): Promise<{
 
             // Load session.json
             try {
-                const raw = await fs.readFile(path.join(dir, "session.json"), "utf-8");
+                const raw = await fs.readFile(path.join(/*turbopackIgnore: true*/ dir, "session.json"), "utf-8");
                 const data = JSON.parse(raw);
                 results.sessionMemory = JSON.stringify(data, null, 2).slice(0, 4000);
             } catch { }
 
             // Load tasks.json
             try {
-                const raw = await fs.readFile(path.join(dir, "tasks.json"), "utf-8");
+                const raw = await fs.readFile(path.join(/*turbopackIgnore: true*/ dir, "tasks.json"), "utf-8");
                 const data = JSON.parse(raw);
                 const recent = (data.tasks ?? []).slice(0, 5);
                 results.activeTasks = JSON.stringify(recent, null, 2).slice(0, 3000);
@@ -54,7 +54,7 @@ export async function loadAgentContext(): Promise<{
 
             // Load usage-tracker.json
             try {
-                const raw = await fs.readFile(path.join(dir, "usage-tracker.json"), "utf-8");
+                const raw = await fs.readFile(path.join(/*turbopackIgnore: true*/ dir, "usage-tracker.json"), "utf-8");
                 const data = JSON.parse(raw);
                 if (data.totals) {
                     results.usageReport = JSON.stringify(data.totals, null, 2).slice(0, 2000);
@@ -67,8 +67,8 @@ export async function loadAgentContext(): Promise<{
 
     // Load guidance from .agent markdown files (AGENT_MEMORY.md, MEMORY_PROTOCOL.md)
     const guidanceDirs = [
-        path.join(WORKSPACE_ROOT, ".agent"),
-        path.join(path.dirname(WORKSPACE_ROOT), ".Agent"),
+        path.join(/*turbopackIgnore: true*/ WORKSPACE_ROOT, ".agent"),
+        path.join(/*turbopackIgnore: true*/ path.dirname(WORKSPACE_ROOT), ".Agent"),
     ];
 
     const guidanceParts: string[] = [];
@@ -76,7 +76,7 @@ export async function loadAgentContext(): Promise<{
         const guideFiles = ["AGENT_MEMORY.md", "MEMORY_PROTOCOL.md", "README.md"];
         for (const gf of guideFiles) {
             try {
-                const p = path.join(dir, gf);
+                const p = path.join(/*turbopackIgnore: true*/ dir, gf);
                 const raw = await fs.readFile(p, "utf-8");
                 guidanceParts.push(`## ${gf}\n${raw.slice(0, 1500)}`);
             } catch { }

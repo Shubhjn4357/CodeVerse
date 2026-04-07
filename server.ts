@@ -154,7 +154,6 @@ app.prepare()
         const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);
 
         if (id) {
-            // PROXY LOGIC (April 2026): Only proxy if not a main dashboard request.
             const isReady = isNativeWorkspaceRunning(id);
             if (isReady) {
                 const port = getNativeWorkspacePort(id) || 8080;
@@ -170,8 +169,37 @@ app.prepare()
                 
                 console.log(`[PROXY:IDE] Mapping ${pathname} -> 127.0.0.1:${port}${req.url}`);
                 return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
+            } else {
+                // EXCLUSIVE FIX (April 2026): Prevent Next.js 404 fallthrough
+                // If it's a workspace path but not ready, show a premium booting screen
+                res.writeHead(503, { 'Content-Type': 'text/html', 'Retry-After': '5' });
+                res.end(`
+                    <html>
+                        <head>
+                            <title>CodeVerse | Booting Workspace</title>
+                            <style>
+                                body { background: #09090b; color: #71717a; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
+                                .container { text-align: center; border: 1px solid #27272a; padding: 2rem; rounded: 1rem; background: #111113; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+                                .spinner { width: 40px; height: 40px; border: 3px solid #3f3f46; border-top-color: #3b82f6; border-radius: 50%; animate: spin 1s linear infinite; margin: 0 auto 1.5rem; }
+                                h1 { color: #f4f4f5; font-size: 1.25rem; margin: 0 0 0.5rem; }
+                                p { font-size: 0.875rem; }
+                                @keyframes spin { to { transform: rotate(360deg); } }
+                            </style>
+                            <script>
+                                setTimeout(() => window.location.reload(), 3000);
+                            </script>
+                        </head>
+                        <body>
+                            <div class="container">
+                                <div class="spinner"></div>
+                                <h1>Workspace is Booting</h1>
+                                <p>We're preparing your agentic environment...</p>
+                            </div>
+                        </body>
+                    </html>
+                `);
+                return;
             }
-            // Fallthrough to Next.js handler if not ready
         }
 
         if (pathname?.startsWith("/android/")) {

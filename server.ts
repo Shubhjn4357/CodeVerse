@@ -1,8 +1,8 @@
 /**
  * 🛰️ GLOBAL STABILIZATION (April 2026): Catch unhandled errors that cause HF Space restarts.
  */
-process.on('uncaughtException', (err) => { console.error('[FATAL:EXCEPTION]', err); });
-process.on('unhandledRejection', (reason) => { console.error('[FATAL:REJECTION]', reason); });
+process.on('uncaughtException', (err: Error) => { console.error('[FATAL:EXCEPTION]', err); });
+process.on('unhandledRejection', (reason: unknown) => { console.error('[FATAL:REJECTION]', reason); });
 
 import { createServer, IncomingMessage, ServerResponse } from "http";
 import next from "next";
@@ -18,17 +18,19 @@ import * as pty from "node-pty";
 import os from "os";
 import { Duplex } from "stream";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
-import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces, nativeProcesses } from "./lib/docker/manager";
+import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces } from "./lib/docker/manager";
 import { initDb } from "./lib/db/schema";
+import { client as dbClient } from "./lib/db";
 import { HFStorage } from "./lib/hf/storage";
-import { ENV_CONFIG, validateEnvironment } from "./lib/env-config";
+import { validateEnvironment } from "./lib/env-config";
 import httpProxy from "http-proxy";
+import { APP_CONFIG, INFRA_CONFIG, UI_STRINGS } from "./constants";
 
 /**
  * PRODUCTION HARDENING (April 2026): Force writable temp paths for HF Spaces.
  */
-process.env.TMPDIR = '/tmp';
-process.env.HF_HOME = '/tmp/.cache/huggingface';
+process.env.TMPDIR = INFRA_CONFIG.TMPDIR;
+process.env.HF_HOME = INFRA_CONFIG.HF_HOME;
 if (!process.env.HOME) process.env.HOME = '/home/node';
 
 const dev = process.env.NODE_ENV !== "production";
@@ -56,13 +58,11 @@ const proxy = httpProxy.createProxyServer({
 
 // 🟢 Production Pre-flight Diagnostics (April 2026)
 console.log('----------------------------------------------------');
-console.log('[BOOT] CodeVerse Production Entrypoint Initialized.');
+console.log(`[BOOT] ${APP_CONFIG.NAME} ${APP_CONFIG.VERSION} Initialized.`);
 console.log(`[BOOT] Environment: ${process.env.NODE_ENV || 'development'}`);
-console.log(`[BOOT] Database State: ${process.env.TURSO_URL || process.env.turso_database_url ? '✅ CONFIGURED' : '❌ MISSING (TURSO_URL)'}`);
-console.log(`[BOOT] Persistence Link: ${process.env.HF_TOKEN || process.env.hfToken ? '✅ CONFIGURED' : '⚠️ UNLINKED (HF_TOKEN Missing)'}`);
-console.log(`[BOOT] Stack Limit: ${process.env.ULIMIT_S || 'Container Default'}`);
+console.log(`[BOOT] Database State: ${process.env.TURSO_URL ? '✅ CONFIGURED' : '❌ MISSING'}`);
+console.log(`[BOOT] Persistence Link: ${process.env.HF_TOKEN ? '✅ CONFIGURED' : '⚠️ UNLINKED'}`);
 console.log('----------------------------------------------------');
-
 
 /**
  * Custom renderer for Proxy Errors and Booting screens.
@@ -84,7 +84,6 @@ function renderProxyError(res: ServerResponse, error: string, id: string) {
                 .id { font-family: monospace; background: #0f172a; padding: 0.4rem 0.6rem; border-radius: 0.4rem; color: #38bdf8; font-size: 0.8rem; }
                 .btn { display: inline-block; background: #38bdf8; color: #0f172a; padding: 0.6rem 1.2rem; border-radius: 0.4rem; text-decoration: none; font-weight: bold; margin-top: 1.5rem; transition: transform 0.2s; }
                 .btn:hover { transform: scale(1.05); }
-                .terminal-link { color: #64748b; font-size: 0.7rem; text-decoration: underline; margin-top: 2rem; display: block; }
             </style>
         </head>
         <body>
@@ -93,11 +92,9 @@ function renderProxyError(res: ServerResponse, error: string, id: string) {
                 <p>Native isolation link for <span class="id">${id}</span> failed.</p>
                 <p style="margin-top: 1rem; text-align: left; padding: 1rem; background: #0f172a; border-radius: 0.5rem; font-size: 0.75rem; color: #64748b;">
                     <b>Diagnostic:</b> ${error}<br>
-                    <b>Target:</b> Hugging Face Space (Sandboxed)<br>
-                    <b>Status:</b> Use the built-in system terminal to interact with files directly if the core IDE remains unreachable.
+                    <b>Target:</b> Hugging Face Space (Sandboxed)
                 </p>
                 <a href="/dashboard/booting?id=${id}" class="btn">Auto-Repair & Boot</a>
-                <a href="/dashboard/system" class="terminal-link">Open Direct Terminal</a>
             </div>
         </body>
         </html>
@@ -120,7 +117,7 @@ proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duple
     }
 });
 
-proxy.on("proxyReq", (proxyReq, req) => {
+proxy.on("proxyReq", (proxyReq, req: IncomingMessage) => {
     const id = req.headers['x-codeverse-id'] as string;
     const type = req.headers['x-codeverse-type'] as string;
     if (id && type) {
@@ -129,7 +126,7 @@ proxy.on("proxyReq", (proxyReq, req) => {
     }
 });
 
-proxy.on("proxyRes", (proxyRes, req) => {
+proxy.on("proxyRes", (proxyRes, req: IncomingMessage) => {
     const id = req.headers['x-codeverse-id'] as string;
     const type = req.headers['x-codeverse-type'] as string;
     if (id && type && proxyRes.headers.location) {
@@ -142,45 +139,79 @@ proxy.on("proxyRes", (proxyRes, req) => {
 
 app.prepare()
   .then(() => {
-    // Validate Production Environment
+    // Validate Production Environment (April 2026 Resilience)
     const envStatus = validateEnvironment();
     if (!envStatus.valid) {
-        console.error("[CRITICAL] Infrastructure missing core secrets:", envStatus.missing.join(', '));
-        if (process.env.NODE_ENV === 'production') process.exit(1);
+        console.error("[BOOT:ERROR] Infrastructure missing core secrets:", envStatus.missing.join(', '));
     }
 
-    initDb()
-        .then(() => {
-            console.log("[BOOT] Database synchronized.");
-            prewarmWorkspace({ id: 'baseline-warmup', userId: 'system', projectName: 'CodeVerse-Internal' })
-                .catch(err => console.error("[BOOT] Warmup failed:", err));
-        })
-        .catch(err => console.error("[BOOT] Database init failed:", err));
-    
-    // 🛠️ Self-Healing: Reconnect to orphans from previous instance
-    reconnectRunningWorkspaces().catch(err => console.error("[BOOT] Reconnection failed:", err));
-    
-    // 🛡️ Persistence: Global heartbeat (starts once)
-    HFStorage.startAutoSave(300000); 
-    startAutoSleepCron();
+    if (envStatus.valid) {
+        // Correct initDb call passing the client to avoid circular dependencies
+        initDb(dbClient)
+            .then(() => {
+                console.log("[BOOT] Database synchronized.");
+                prewarmWorkspace({ 
+                    id: 'baseline-warmup', 
+                    userId: 'system', 
+                    projectName: 'CodeVerse-Internal' 
+                }).catch(err => console.error("[BOOT] Warmup failed:", err));
+            })
+            .catch(err => console.error("[BOOT] Database init failed:", err));
+        
+        // 🛠️ Self-Healing: Reconnect to orphans from previous instance
+        reconnectRunningWorkspaces().catch(err => console.error("[BOOT] Reconnection failed:", err));
+        
+        // 🛡️ Persistence: Global heartbeat
+        HFStorage.startAutoSave(INFRA_CONFIG.PERSISTENCE_INTERVAL_MS * 5); 
+        startAutoSleepCron();
+    }
 
     const server = createServer((req: IncomingMessage, res: ServerResponse) => {
         const host = req.headers.host || "localhost";
         const fullUrl = new URL(req.url || "/", `http://${host}`);
         const { pathname } = fullUrl;
 
+        // 🚑 INFRASTRUCTURE MAINTENANCE (April 2026): Intercept requests if configuration is missing
+        if (!envStatus.valid && pathname !== "/api/health" && !pathname.startsWith("/_next/")) {
+            res.writeHead(503, { 'Content-Type': 'text/html' });
+            return res.end(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <title>${APP_CONFIG.NAME} | ${UI_STRINGS.MAINTENANCE_TITLE}</title>
+                    <style>
+                        body { background: #09090b; color: #a1a1aa; font-family: sans-serif; height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }
+                        .panic-card { background: #18181b; border: 1px solid #27272a; padding: 2.5rem; border-radius: 1rem; max-width: 550px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+                        h1 { color: #f4f4f5; font-size: 1.5rem; margin: 0 0 1rem; }
+                        .desc { font-size: 0.9rem; line-height: 1.6; margin-bottom: 2rem; }
+                        .status { display: flex; flex-direction: column; gap: 0.75rem; margin: 1.5rem 0; }
+                        .item { padding: 0.75rem; border-radius: 0.5rem; background: #09090b; font-size: 0.875rem; border: 1px solid #27272a; display: flex; align-items: center; gap: 0.5rem; }
+                        .item.missing { color: #f87171; border-color: #450a0a; }
+                    </style>
+                </head>
+                <body>
+                    <div class="panic-card">
+                        <h1>${UI_STRINGS.MAINTENANCE_TITLE}</h1>
+                        <p class="desc">${UI_STRINGS.MAINTENANCE_MESSAGE}</p>
+                        <div class="status">
+                            ${envStatus.missing.map(m => `<div class="item missing"><span>❌</span> ${m}</div>`).join('')}
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `);
+        }
+
         const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
         const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);
 
         if (id) {
-            console.log("nativeProcessesId", id);
             const isReady = isNativeWorkspaceRunning(id);
             if (isReady) {
                 const port = getNativeWorkspacePort(id) || 8080;
                 req.headers['x-codeverse-id'] = id;
                 req.headers['x-codeverse-type'] = 'workspace';
                 
-                // CRITICAL: Preserve Query Parameters (?folder=...)
                 const prefix = `/workspace/${id}`;
                 if (req.url?.startsWith(prefix)) {
                     req.url = req.url.substring(prefix.length);
@@ -189,67 +220,31 @@ app.prepare()
                 
                 return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
             } else if (!pathname?.startsWith("/api/")) {
-                // EXCLUSIVE FIX (April 2026): Prevent Next.js 404 fallthrough
-                // Only show for main workspace routes, let API routes pass to Next.js for provisioning.
                 res.writeHead(503, { 'Content-Type': 'text/html', 'Retry-After': '5' });
                 res.end(`
                     <html>
                         <head>
-                            <title>CodeVerse | Booting Workspace</title>
+                            <title>${APP_CONFIG.NAME} | Booting Workspace</title>
                             <style>
-                                body { background: #09090b; color: #71717a; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
-                                .container { text-align: center; border: 1px solid #27272a; padding: 2rem; rounded: 1rem; background: #111113; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+                                body { background: #09090b; color: #71717a; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                                .container { text-align: center; border: 1px solid #27272a; padding: 2rem; border-radius: 1rem; background: #111113; }
                                 .spinner { width: 40px; height: 40px; border: 3px solid #3f3f46; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
-                                h1 { color: #f4f4f5; font-size: 1.25rem; margin: 0 0 0.5rem; }
-                                p { font-size: 0.875rem; }
-                                .id-info { font-family: monospace; color: #3b82f6; margin-top: 1rem; font-size: 0.75rem; opacity: 0.5; }
+                                h1 { color: #f4f4f5; font-size: 1.25rem; }
                                 @keyframes spin { to { transform: rotate(360deg); } }
                             </style>
-                            <script>
-                                console.log("CodeVerse: Workspace ${id} is not yet ready. Reloading...");
-                                setTimeout(() => window.location.reload(), 3000);
-                            </script>
+                            <script>setTimeout(() => window.location.reload(), 3000);</script>
                         </head>
                         <body>
                             <div class="container">
                                 <div class="spinner"></div>
                                 <h1>Workspace is Booting</h1>
-                                <p>We're preparing your agentic environment...</p>
-                                <div class="id-info">Mapping ID: ${id}</div>
+                                <p>Preparing your agentic session...</p>
                             </div>
                         </body>
                     </html>
                 `);
                 return;
             }
-        }
-
-        if (pathname?.startsWith("/android/")) {
-            const port = getAndroidPort() || 6080;
-            const aId = pathname.split("/")[2] || "android-unified";
-            req.headers['x-codeverse-id'] = aId;
-            req.headers['x-codeverse-type'] = 'android';
-            
-            const prefix = `/android/${aId}`;
-            if (req.url?.startsWith(prefix)) {
-                req.url = req.url.substring(prefix.length);
-                if (!req.url.startsWith("/")) req.url = "/" + req.url;
-            }
-
-            console.log(`[PROXY:ANDROID] Mapping ${pathname} -> 127.0.0.1:${port}${req.url}`);
-            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
-        }
-
-        if (pathname === "/api/stats") {
-            const stats = {
-                rss: process.memoryUsage().rss,
-                heapUsed: process.memoryUsage().heapUsed,
-                heapTotal: process.memoryUsage().heapTotal,
-                loadAvg: os.loadavg(),
-                uptime: process.uptime()
-            };
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            return res.end(JSON.stringify(stats));
         }
 
         handle(req, res);
@@ -276,8 +271,6 @@ app.prepare()
                 req.url = req.url.substring(prefix.length);
                 if (!req.url.startsWith("/")) req.url = "/" + req.url;
             }
-            
-            console.log(`[PROXY:WS] Upgrading ${pathname} -> 127.0.0.1:${port}${req.url}`);
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
 
@@ -286,21 +279,6 @@ app.prepare()
                 yjsWss.emit("connection", ws, req);
             });
             return;
-        }
-
-        if (pathname?.startsWith("/android/")) {
-            const port = getAndroidPort() || 6080;
-            const aId = pathname.split("/")[2] || "android-unified";
-            req.headers['x-codeverse-id'] = aId;
-            req.headers['x-codeverse-type'] = 'android';
-            
-            const prefix = `/android/${aId}`;
-            if (req.url?.startsWith(prefix)) {
-                req.url = req.url.substring(prefix.length);
-                if (!req.url.startsWith("/")) req.url = "/" + req.url;
-            }
-            
-            return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
     });
 
@@ -352,39 +330,6 @@ app.prepare()
         });
     });
 
-    /**
-     * PROXY GLOBAL LISTENERS
-     */
-    proxy.on("proxyReq", (proxyReq, req: IncomingMessage) => {
-        const id = req.headers['x-codeverse-id'] as string;
-        const type = req.headers['x-codeverse-type'] as string;
-        if (id) proxyReq.setHeader('x-codeverse-id', id);
-        if (type) proxyReq.setHeader('x-codeverse-type', type);
-        
-        const proto = req.headers['x-forwarded-proto'] || 'http';
-        proxyReq.setHeader('X-Forwarded-Proto', proto);
-        const host = req.headers.host;
-        if (host) proxyReq.setHeader('X-Forwarded-Host', host);
-    });
-
-    proxy.on("proxyRes", (proxyRes, req: IncomingMessage) => {
-        const id = req.headers['x-codeverse-id'] as string;
-        const type = req.headers['x-codeverse-type'] as string;
-        const location = proxyRes.headers.location;
-
-        if (location && id && type) {
-            const prefix = type === 'workspace' ? `/workspace/${id}` : '/android';
-            if (location.startsWith("/") && !location.startsWith(prefix)) {
-                proxyRes.headers.location = prefix + location;
-            } else if (location.includes("127.0.0.1") || location.includes("localhost")) {
-                try {
-                    const locUrl = new URL(location);
-                    proxyRes.headers.location = prefix + locUrl.pathname + locUrl.search;
-                } catch {}
-            }
-        }
-    });
-
     io.on("connection", (socket) => {
         let shell: pty.IPty | null = null;
         socket.on("terminal:start", ({ cols, rows }: { cols: number; rows: number }) => {
@@ -393,36 +338,18 @@ app.prepare()
                 name: "xterm-color",
                 cols: cols || 80,
                 rows: rows || 24,
-                cwd: (process.env.HOME || process.cwd()) as string,
+                cwd: INFRA_CONFIG.WORKSPACE_ROOT,
                 env: process.env as Record<string, string>,
             });
             shell.onData((data: string) => socket.emit("terminal:data", data));
-            shell.onExit(({ exitCode }) => socket.emit("terminal:data", `\r\n\x1b[31m[Process exited with code ${exitCode}]\x1b[0m\r\n`));
         });
         socket.on("terminal:write", (data: string) => { if (shell) shell.write(data); });
-        socket.on("terminal:resize", ({ cols, rows }: { cols: number; rows: number }) => { if (shell) try { shell.resize(cols, rows); } catch (e) { console.error(e); } });
+        socket.on("terminal:resize", ({ cols, rows }: { cols: number; rows: number }) => { if (shell) try { shell.resize(cols, rows); } catch {} });
         socket.on("disconnect", () => { if (shell) { shell.kill(); shell = null; } });
     });
 
     const PORT = process.env.PORT || 7860;
     server.listen(PORT, () => {
-        let inferredUrl = `http://localhost:${PORT}`;
-        
-        if (process.env.SIMULATE_HF === 'true') {
-            console.warn("⚠️  HUGGING FACE SIMULATION MODE ACTIVE (Shared Memory, Native Fallback, Sandboxed FS)");
-        }
-
-        if (process.env.SPACE_ID && process.env.SPACE_ID.includes('/')) {
-            const [user, name] = process.env.SPACE_ID.split('/');
-            inferredUrl = `https://${user.toLowerCase()}-${name.toLowerCase()}.hf.space`;
-        }
-        const pingUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.HF_URL || inferredUrl;
-        console.log(`> Ready on ${pingUrl}`);
-        
-        setInterval(() => {
-            fetch(`${pingUrl}/api/health`)
-                .then(res => res.json())
-                .catch(() => {});
-        }, 5 * 60 * 1000);
+        console.log(`> Ready on http://localhost:${PORT}`);
     });
 });

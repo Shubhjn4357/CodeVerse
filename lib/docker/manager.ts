@@ -385,7 +385,7 @@ export async function reconnectRunningWorkspaces() {
                         port, 
                         process: { 
                             pid,
-                            kill: (_signal?: string | number) => { 
+                            kill: () => { 
                                 try { 
                                     process.kill(pid, 'SIGKILL'); 
                                     return true;

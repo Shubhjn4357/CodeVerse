@@ -3,7 +3,14 @@
 import { signIn } from "next-auth/react";
 import { Github, Code2, ArrowRight } from "lucide-react";
 import { motion } from "framer-motion";
+import { APP_CONFIG, UI_STRINGS } from "@/constants";
 
+/**
+ * 🎨 CodeVerse Login Page
+ * A premium, studio-grade entrance to the agentic environment.
+ * Uses centralized UI_STRINGS and APP_CONFIG for 100% architectural consistency.
+ * Optimized with Framer Motion for high-impact professional animations.
+ */
 export default function LoginPage() {
     return (
         <div className="min-h-screen bg-(--bg) flex flex-col items-center justify-center p-6 relative overflow-hidden">
@@ -27,12 +34,14 @@ export default function LoginPage() {
                         className="w-20 h-20 bg-linear-to-br from-(--bg-2) to-(--surface-hover) border border-(--border) rounded-2xl flex items-center justify-center mx-auto mb-8 shadow-inner relative overflow-hidden"
                     >
                         <div className="absolute inset-0 bg-linear-to-br from-(--accent)/20 to-transparent opacity-50" />
-                        <Code2 size={40} className="text-(--accent) relative z-10" />
+                        <Code2 size={APP_CONFIG.LOGO_SIZE} className="text-(--accent) relative z-10" />
                     </motion.div>
 
-                    <h1 className="text-3xl font-bold text-(--text) mb-3 tracking-tight">CodeVerse <span className="text-(--text-muted) font-normal">Studio</span></h1>
+                    <h1 className="text-3xl font-bold text-(--text) mb-3 tracking-tight">
+                        {APP_CONFIG.NAME} <span className="text-(--text-muted) font-normal">Studio</span>
+                    </h1>
                     <p className="text-(--text-muted) text-[15px] mb-10 leading-relaxed">
-                        The fully managed, agentic VS Code environment running securely in the browser.
+                        {UI_STRINGS.LOGIN_SUBTITLE}
                     </p>
 
                     <button
@@ -45,6 +54,16 @@ export default function LoginPage() {
                         </div>
                         <ArrowRight size={18} className="opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
                     </button>
+
+                    {(process.env.NEXT_PUBLIC_NODE_ENV === "development" || process.env.NODE_ENV === "development") && (
+                        <button
+                            onClick={() => signIn("credentials", { username: "dev", callbackUrl: "/" })}
+                            className="mt-4 w-full flex items-center justify-center gap-2 text-(--text-muted) hover:text-(--accent) text-sm font-medium py-2 transition-colors"
+                        >
+                            <Code2 size={16} />
+                            <span>{UI_STRINGS.BYPASS_LABEL}</span>
+                        </button>
+                    )}
 
                     <div className="mt-8 text-xs text-(--text-muted) flex flex-col gap-2">
                         <p>Powered by highly scalable containerized VS Code engines.</p>

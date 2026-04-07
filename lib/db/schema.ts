@@ -1,4 +1,46 @@
-export const schema = `
+import { type Client, type ResultSet } from "@libsql/client";
+
+/**
+ * 📊 CodeVerse Native Schema
+ * Strict TypeScript definitions for all database tables.
+ * Standardized on LibSQL Native interfaces to minimize external dependencies.
+ */
+
+export interface UserRecord {
+  id: string;
+  name: string | null;
+  email: string;
+  image: string | null;
+  github_username: string | null;
+  created_at?: string;
+}
+
+export interface SessionRecord {
+  id: string;
+  sessionToken: string;
+  userId: string;
+  expires: string;
+}
+
+export interface VerificationTokenRecord {
+  identifier: string;
+  token: string;
+  expires: string;
+}
+
+export interface WorkspaceRecord {
+  id: string;
+  user_id: string;
+  project_name: string;
+  container_id: string | null;
+  android_container_id: string | null;
+  status: string | null;
+  port_mapping: number | null;
+  android_port: number | null;
+  created_at?: string;
+}
+
+export const rawSchema = `
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   name TEXT,
@@ -23,21 +65,6 @@ CREATE TABLE IF NOT EXISTS accounts (
   FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE TABLE IF NOT EXISTS sessions (
-  id TEXT PRIMARY KEY,
-  sessionToken TEXT UNIQUE NOT NULL,
-  userId TEXT NOT NULL,
-  expires DATETIME NOT NULL,
-  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS verification_tokens (
-  identifier TEXT NOT NULL,
-  token TEXT UNIQUE NOT NULL,
-  expires DATETIME NOT NULL,
-  PRIMARY KEY (identifier, token)
-);
-
 CREATE TABLE IF NOT EXISTS workspaces (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -48,34 +75,6 @@ CREATE TABLE IF NOT EXISTS workspaces (
   port_mapping INTEGER,
   android_port INTEGER,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS api_keys (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  provider TEXT NOT NULL,
-  key_hash TEXT NOT NULL,
-  key_preview TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS usage_logs (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  model TEXT NOT NULL,
-  prompt_tokens INTEGER NOT NULL,
-  completion_tokens INTEGER NOT NULL,
-  cost_cents REAL NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE IF NOT EXISTS user_settings (
-  user_id TEXT PRIMARY KEY,
-  settings_json TEXT NOT NULL,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
@@ -90,26 +89,49 @@ CREATE TABLE IF NOT EXISTS chat_history (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
 );
+CREATE TABLE IF NOT EXISTS communities (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  owner_id TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  sessionToken TEXT UNIQUE NOT NULL,
+  userId TEXT NOT NULL,
+  expires DATETIME NOT NULL,
+  FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS verification_tokens (
+  identifier TEXT NOT NULL,
+  token TEXT NOT NULL,
+  expires DATETIME NOT NULL,
+  PRIMARY KEY (identifier, token)
+);
 `;
 
-export async function initDb() {
-  const { db } = await import("./index");
-  // Execute base schema creation
-  await db.executeMultiple(schema);
+/**
+ * 🚀 Database Initialization Routine
+ * Hardened for Hugging Face Spaces: Ensures schema exists and dev user is seeded.
+ */
+export async function initDb(client: Client): Promise<void> {
+  // Use raw execution for robustness during cold start
+  await client.executeMultiple(rawSchema);
 
-  // Migration: Ensure android columns exist for workspaces
-  // SQLite doesn't support 'IF NOT EXISTS' for columns, so we try and catch.
-  try {
-    await db.execute("ALTER TABLE workspaces ADD COLUMN android_container_id TEXT;");
-    console.log("[SYSTEM] Database migration: Added android_container_id to workspaces.");
-  } catch {
-    // Column likely already exists
-  }
-
-  try {
-    await db.execute("ALTER TABLE workspaces ADD COLUMN android_port INTEGER;");
-    console.log("[SYSTEM] Database migration: Added android_port to workspaces.");
-  } catch {
-    // Column likely already exists
+  // 🌱 SEEDING (Dev Only): Create a 'Developer Guest' user for the login bypass
+  if (process.env.NODE_ENV === "development" || process.env.NEXT_PUBLIC_NODE_ENV === "development") {
+    try {
+      await client.execute({
+        sql: "INSERT OR IGNORE INTO users (id, name, email, image) VALUES (?, ?, ?, ?)",
+        args: ["dev-user-id", "Developer Guest", "dev@codeverse.local", "https://github.com/identicons/dev.png"]
+      });
+      console.log("[SYSTEM] Dev Seeding: 'Developer Guest' user ready.");
+    } catch (e: unknown) {
+      console.error("[SYSTEM] Dev Seeding failed:", e);
+    }
   }
 }

@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn, ChildProcess, execSync } from 'child_process';
 import path from 'path';
 import Docker from 'dockerode';
 import { EventEmitter } from 'events';
@@ -7,10 +7,20 @@ import { IdxEngine } from '../idx/idx-engine';
 import { HFStorage } from '../hf/storage';
 
 /**
- * Registry for native workspace processes (IDE instances running outside Docker)
- * Map<workspaceId, { pid: number; port: number; process: ChildProcess }>
+ * Lighter process interface for reconnected sessions that don't have a full Node.js ChildProcess object.
+ * We only require 'kill' and 'pid' for the watchdog and management tasks.
  */
-export const nativeProcesses = new Map<string, { pid: number; port: number; process: ChildProcess }>();
+type WorkspaceProcess = Pick<ChildProcess, 'kill' | 'pid'> & {
+    on?: ChildProcess['on'];
+    stdout?: ChildProcess['stdout'];
+    stderr?: ChildProcess['stderr'];
+};
+
+/**
+ * Registry for native workspace processes (IDE instances running outside Docker)
+ * Map<workspaceId, { pid: number; port: number; process: WorkspaceProcess }>
+ */
+export const nativeProcesses = new Map<string, { pid: number; port: number; process: WorkspaceProcess }>();
 
 /**
  * Internal Provisioning Bus to multicast logs to concurrent clients.
@@ -313,13 +323,14 @@ export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<
  * This allows the IDE to survive server restarts or cold boots by probing active ports.
  */
 export async function reconnectRunningWorkspaces() {
-    const { execSync } = require('child_process');
     const workspaceRoot = process.env.WORKSPACE_ROOT || '/home/node/w';
     
     console.log(`[BOOT] Probing filesystem segment: ${workspaceRoot} for existing sessions...`);
     try {
         // Find all code-server processes
-        const output = execSync("ps aux | grep code-server | grep -v grep").toString();
+        // Note: Using a more robust ps grep that works across most POSIX environments
+        const psCmd = process.platform === 'win32' ? 'tasklist' : "ps aux | grep code-server | grep -v grep";
+        const output = execSync(psCmd).toString();
         const lines = output.split('\n');
         
         for (const line of lines) {
@@ -336,11 +347,28 @@ export async function reconnectRunningWorkspaces() {
                 if (fs.existsSync(idFile)) {
                     const fullId = fs.readFileSync(idFile, 'utf-8').trim();
                     if (!nativeProcesses.has(fullId)) {
-                        console.log(`[RECONNECT] Identified active IDE ${fullId.slice(0,8)}... on port ${port}. Restoring proxy link.`);
+                        const pid = parseInt(line.trim().split(/\s+/)[1]);
+                        console.log(`[RECONNECT] Identified active IDE ${fullId.slice(0,8)}... (PID: ${pid}) on port ${port}. Restoring proxy link.`);
+                        
                         nativeProcesses.set(fullId, { 
-                            pid: 0, // Placeholder for PID
+                            pid, 
                             port, 
-                            process: { kill: () => { try { execSync(`fuser -k ${port}/tcp`); } catch {} } } as any 
+                            process: { 
+                                pid,
+                                kill: (_signal?: string | number) => { 
+                                    try { 
+                                        process.kill(pid, 'SIGKILL'); 
+                                        return true;
+                                    } catch {
+                                        try { 
+                                            execSync(`fuser -k ${port}/tcp`); 
+                                            return true;
+                                        } catch {
+                                            return false;
+                                        }
+                                    }
+                                }
+                            } as WorkspaceProcess 
                         });
                     }
                 }

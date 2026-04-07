@@ -178,9 +178,9 @@ app.prepare()
                 
                 console.log(`[PROXY:IDE] Mapping ${pathname} -> 127.0.0.1:${port}${req.url}`);
                 return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
-            } else {
+            } else if (!pathname?.startsWith("/api/")) {
                 // EXCLUSIVE FIX (April 2026): Prevent Next.js 404 fallthrough
-                // If it's a workspace path but not ready, show a premium booting screen
+                // Only show for main workspace routes, let API routes pass to Next.js for provisioning.
                 res.writeHead(503, { 'Content-Type': 'text/html', 'Retry-After': '5' });
                 res.end(`
                     <html>

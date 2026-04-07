@@ -9,7 +9,7 @@ export class HFStorage {
     private static readonly HF_TOKEN = process.env.HF_TOKEN;
     private static readonly HF_DATASET_ID = process.env.HF_DATASET_ID;
     private static readonly PROFILE_PATH = path.join(process.env.HOME || '/home/node', '.nix-profile');
-    private static readonly WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/home/node/app/workspaces';
+    private static readonly WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/home/node/w';
 
     /**
      * Internal helper for asynchronous execution with logging.
@@ -19,6 +19,8 @@ export class HFStorage {
             const spawnEnv = { 
                 ...process.env, 
                 HF_TOKEN: this.HF_TOKEN,
+                HF_HOME: '/tmp/.cache/huggingface',
+                TMPDIR: '/tmp',
                 PATH: `/home/node/.local/bin:/home/node/.nix-profile/bin:/usr/local/bin:/usr/bin:${process.env.PATH}` 
             };
             const child = spawn('/bin/bash', ['-c', command], {

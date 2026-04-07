@@ -183,9 +183,11 @@ app.prepare()
                                 .spinner { width: 40px; height: 40px; border: 3px solid #3f3f46; border-top-color: #3b82f6; border-radius: 50%; animate: spin 1s linear infinite; margin: 0 auto 1.5rem; }
                                 h1 { color: #f4f4f5; font-size: 1.25rem; margin: 0 0 0.5rem; }
                                 p { font-size: 0.875rem; }
+                                .id-info { font-family: monospace; color: #3b82f6; margin-top: 1rem; font-size: 0.75rem; opacity: 0.5; }
                                 @keyframes spin { to { transform: rotate(360deg); } }
                             </style>
                             <script>
+                                console.log("CodeVerse: Workspace ${id} is not yet ready. Reloading...");
                                 setTimeout(() => window.location.reload(), 3000);
                             </script>
                         </head>
@@ -194,6 +196,7 @@ app.prepare()
                                 <div class="spinner"></div>
                                 <h1>Workspace is Booting</h1>
                                 <p>We're preparing your agentic environment...</p>
+                                <div class="id-info">Mapping ID: ${id}</div>
                             </div>
                         </body>
                     </html>

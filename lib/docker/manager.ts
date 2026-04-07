@@ -137,8 +137,9 @@ export interface WorkspaceOperationResult {
  * PREDICTIVE HYDRATION: Pre-warms Nix profile and SDKs.
  */
 export async function prewarmWorkspace(config: WorkspaceConfig): Promise<void> {
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
-    const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
+    // CRITICAL (April 2026): Shorten paths to avoid Unix Domain Socket (UDS) path limit (104 chars)
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
+    const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id.slice(0, 8));
     
     if (!fs.existsSync(workspacePath)) {
         fs.mkdirSync(workspacePath, { recursive: true });
@@ -169,8 +170,8 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
     HFStorage.startAutoSave(300000); // 5m auto-save
     
     // 1. Prepare Workspace Directory
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/app/workspaces');
-    const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id);
+    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
+    const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id.slice(0, 8));
     const userDataPath = path.join(/*turbopackIgnore: true*/ workspacePath, '.vscode-server');
     
     if (!fs.existsSync(workspacePath)) {

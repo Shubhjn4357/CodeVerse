@@ -130,6 +130,24 @@ proxy.on("error", (err, req, res) => {
         renderProxyError(res, err.message, id);
     }
 });
+proxy.on("proxyReq", (proxyReq, req) => {
+    const id = req.headers['x-codeverse-id'];
+    const type = req.headers['x-codeverse-type'];
+    if (id && type) {
+        proxyReq.setHeader('x-codeverse-id', id);
+        proxyReq.setHeader('x-codeverse-type', type);
+    }
+});
+proxy.on("proxyRes", (proxyRes, req) => {
+    const id = req.headers['x-codeverse-id'];
+    const type = req.headers['x-codeverse-type'];
+    if (id && type && proxyRes.headers.location) {
+        const originalLocation = proxyRes.headers.location;
+        if (originalLocation.startsWith('/') && !originalLocation.startsWith(`/${type}/${id}`)) {
+            proxyRes.headers.location = `/${type}/${id}${originalLocation}`;
+        }
+    }
+});
 // Port and Host logic
 const PORT = Number(process.env.PORT) || 7860;
 const HOST = '0.0.0.0';
@@ -199,6 +217,32 @@ const server = (0, http_1.createServer)((req, res) => {
                     req.url = "/" + req.url;
             }
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
+        }
+        else if (!(pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/api/"))) {
+            // 🚑 WORKSPACE BOOTING FALLBACK: Prevent Next.js 404 while workspace is initializing
+            res.writeHead(503, { 'Content-Type': 'text/html', 'Retry-After': '5' });
+            return res.end(`
+                <html>
+                    <head>
+                        <title>CodeVerse | Booting Workspace</title>
+                        <style>
+                            body { background: #09090b; color: #71717a; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+                            .container { text-align: center; border: 1px solid #27272a; padding: 2rem; border-radius: 1rem; background: #111113; }
+                            .spinner { width: 40px; height: 40px; border: 3px solid #3f3f46; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
+                            h1 { color: #f4f4f5; font-size: 1.25rem; }
+                            @keyframes spin { to { transform: rotate(360deg); } }
+                        </style>
+                        <script>setTimeout(() => window.location.reload(), 3000);</script>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="spinner"></div>
+                            <h1>Workspace is Booting</h1>
+                            <p>Preparing your agentic session...</p>
+                        </div>
+                    </body>
+                </html>
+            `);
         }
     }
     // 4. Default Next.js Handle

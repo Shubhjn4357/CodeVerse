@@ -12,9 +12,9 @@ import * as pty from "node-pty";
 import os from "os";
 import { Duplex } from "stream";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
-import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces } from "./lib/docker/manager";
+import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces, nativeProcesses } from "./lib/docker/manager";
 import { initDb } from "./lib/db/schema";
-import { ENV_CONFIG, validateEnvironment } from "./lib/env-config";
+import { validateEnvironment } from "./lib/env-config";
 import httpProxy from "http-proxy";
 
 /**
@@ -176,9 +176,9 @@ app.prepare()
                     if (!req.url.startsWith("/")) req.url = "/" + req.url;
                 }
                 
-                console.log(`[PROXY:IDE] Mapping ${pathname} -> 127.0.0.1:${port}${req.url}`);
                 return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
             } else if (!pathname?.startsWith("/api/")) {
+                console.log(`[PROXY:DEBUG] Workspace ${id} not found in nativeProcesses. Available:`, Array.from(nativeProcesses.keys()));
                 // EXCLUSIVE FIX (April 2026): Prevent Next.js 404 fallthrough
                 // Only show for main workspace routes, let API routes pass to Next.js for provisioning.
                 res.writeHead(503, { 'Content-Type': 'text/html', 'Retry-After': '5' });

@@ -334,9 +334,10 @@ export async function reconnectRunningWorkspaces() {
         const lines = output.split('\n');
         
         for (const line of lines) {
-            // Looking for: ... --bind-addr 127.0.0.1:8548 ... /home/node/w/44c7597c
+            // Looking for: ... --bind-addr 127.0.0.1:8548 ... w/44c7597c
             const bindMatch = line.match(/--bind-addr 127\.0\.0\.1:(\d+)/);
-            const pathMatch = line.match(new RegExp(`${workspaceRoot}/([a-zA-Z0-9]+)`));
+            // Flexible path match: look for the ID prefix after 'w/' or 'workspaces/' or just the root
+            const pathMatch = line.match(/[ /](?:w|workspaces)\/([a-zA-Z0-9]{8})/);
             
             if (bindMatch && pathMatch) {
                 const port = parseInt(bindMatch[1]);
@@ -344,33 +345,37 @@ export async function reconnectRunningWorkspaces() {
                 const fullPath = path.join(workspaceRoot, shortId);
                 const idFile = path.join(fullPath, '.codeverse-id');
                 
+                let foundFullId = "";
                 if (fs.existsSync(idFile)) {
-                    const fullId = fs.readFileSync(idFile, 'utf-8').trim();
-                    if (!nativeProcesses.has(fullId)) {
-                        const pid = parseInt(line.trim().split(/\s+/)[1]);
-                        console.log(`[RECONNECT] Identified active IDE ${fullId.slice(0,8)}... (PID: ${pid}) on port ${port}. Restoring proxy link.`);
-                        
-                        nativeProcesses.set(fullId, { 
-                            pid, 
-                            port, 
-                            process: { 
-                                pid,
-                                kill: (_signal?: string | number) => { 
-                                    try { 
-                                        process.kill(pid, 'SIGKILL'); 
-                                        return true;
-                                    } catch {
-                                        try { 
-                                            execSync(`fuser -k ${port}/tcp`); 
-                                            return true;
-                                        } catch {
-                                            return false;
-                                        }
-                                    }
+                    foundFullId = fs.readFileSync(idFile, 'utf-8').trim();
+                } else {
+                    // Fallback: If no ID file, we use the shortId as the temporary key.
+                    foundFullId = shortId;
+                    console.warn(`[RECONNECT:WARN] No .codeverse-id for session ${shortId}. Using prefix mapping.`);
+                }
+                
+                if (foundFullId && !nativeProcesses.has(foundFullId)) {
+                    // Capture PID reliably from ps output (column 2)
+                    const psParts = line.trim().split(/\s+/);
+                    const pid = parseInt(psParts[1]);
+                    
+                    console.log(`[RECONNECT] Identified active IDE ${foundFullId} (PID: ${pid}) on port ${port}. Restoration complete.`);
+                    nativeProcesses.set(foundFullId, { 
+                        pid, 
+                        port, 
+                        process: { 
+                            pid,
+                            kill: (_signal?: string | number) => { 
+                                try { 
+                                    process.kill(pid, 'SIGKILL'); 
+                                    return true;
+                                } catch {
+                                    try { execSync(`fuser -k ${port}/tcp`); } catch {}
+                                    return true; 
                                 }
-                            } as WorkspaceProcess 
-                        });
-                    }
+                            }
+                        } as WorkspaceProcess 
+                    });
                 }
             }
         }

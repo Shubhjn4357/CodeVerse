@@ -1,59 +1,91 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
 /**
  * 🛰️ GLOBAL STABILIZATION (April 2026): Catch unhandled errors that cause HF Space restarts.
  */
-process.on('uncaughtException', (err: Error) => { console.error('[FATAL:EXCEPTION]', err); });
-process.on('unhandledRejection', (reason: unknown) => { console.error('[FATAL:REJECTION]', reason); });
-
-import { createServer, IncomingMessage, ServerResponse } from "http";
-import next from "next";
-import { Server } from "socket.io";
-import { WebSocketServer, WebSocket } from "ws";
-import * as Y from "yjs";
-import * as awarenessProtocol from "y-protocols/awareness";
-import * as syncProtocol from "y-protocols/sync";
-import * as encoding from "lib0/encoding";
-import * as decoding from "lib0/decoding";
-import * as map from "lib0/map";
-import * as pty from "node-pty";
-import os from "os";
-import { Duplex } from "stream";
-import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
-import { getNativeWorkspacePort, isNativeWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces } from "./lib/docker/manager";
-import { initDb } from "./lib/db/schema";
-import { client as dbClient } from "./lib/db";
-import { HFStorage } from "./lib/hf/storage";
-import { validateEnvironment } from "./lib/env-config";
-import httpProxy from "http-proxy";
-import { APP_CONFIG, INFRA_CONFIG, UI_STRINGS } from "./constants";
-
+process.on('uncaughtException', (err) => { console.error('[FATAL:EXCEPTION]', err); });
+process.on('unhandledRejection', (reason) => { console.error('[FATAL:REJECTION]', reason); });
+const http_1 = require("http");
+const next_1 = __importDefault(require("next"));
+const socket_io_1 = require("socket.io");
+const ws_1 = require("ws");
+const Y = __importStar(require("yjs"));
+const awarenessProtocol = __importStar(require("y-protocols/awareness"));
+const syncProtocol = __importStar(require("y-protocols/sync"));
+const encoding = __importStar(require("lib0/encoding"));
+const decoding = __importStar(require("lib0/decoding"));
+const map = __importStar(require("lib0/map"));
+const pty = __importStar(require("node-pty"));
+const os_1 = __importDefault(require("os"));
+const auto_sleep_1 = require("./lib/jobs/auto-sleep");
+const manager_1 = require("./lib/docker/manager");
+const schema_1 = require("./lib/db/schema");
+const db_1 = require("./lib/db");
+const storage_1 = require("./lib/hf/storage");
+const env_config_1 = require("./lib/env-config");
+const http_proxy_1 = __importDefault(require("http-proxy"));
+const constants_1 = require("./constants");
 /**
  * PRODUCTION HARDENING (April 2026): Force writable temp paths for HF Spaces.
  */
-process.env.TMPDIR = INFRA_CONFIG.TMPDIR;
-process.env.HF_HOME = INFRA_CONFIG.HF_HOME;
-if (!process.env.HOME) process.env.HOME = '/home/node';
-
+process.env.TMPDIR = constants_1.INFRA_CONFIG.TMPDIR;
+process.env.HF_HOME = constants_1.INFRA_CONFIG.HF_HOME;
+if (!process.env.HOME)
+    process.env.HOME = '/home/node';
 const dev = process.env.NODE_ENV !== "production";
-const app = next({ dev });
+const app = (0, next_1.default)({ dev });
 const handle = app.getRequestHandler();
-
-const docs = new Map<string, { doc: Y.Doc; awareness: awarenessProtocol.Awareness }>();
-const getOrCreateDoc = (docName: string) => {
+const docs = new Map();
+const getOrCreateDoc = (docName) => {
     return map.setIfUndefined(docs, docName, () => {
         const doc = new Y.Doc();
         const awareness = new awarenessProtocol.Awareness(doc);
         return { doc, awareness };
     });
 };
-
-const proxy = httpProxy.createProxyServer({
+const proxy = http_proxy_1.default.createProxyServer({
     ws: true,
     xfwd: true,
     timeout: 30000,
     proxyTimeout: 30000
 });
-
-function renderProxyError(res: ServerResponse, error: string, id: string) {
+function renderProxyError(res, error, id) {
     res.writeHead(502, { 'Content-Type': 'text/html' });
     res.end(`
         <!DOCTYPE html>
@@ -86,38 +118,31 @@ function renderProxyError(res: ServerResponse, error: string, id: string) {
         </html>
     `);
 }
-
-proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duplex) => {
+proxy.on("error", (err, req, res) => {
     const host = req.headers.host || "";
     const fullUrl = new URL(req.url || "/", `http://${host}`);
     const pathname = fullUrl.pathname;
-    
-    const headerId = req.headers['x-codeverse-id'] as string;
+    const headerId = req.headers['x-codeverse-id'];
     const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
     const id = headerId || (workspaceHostMatch ? workspaceHostMatch[1] : (pathname.split("/")[2] || "unknown"));
-    
     console.error(`[Proxy Connection Error] ${err.message} for workspace/${id}`);
-    
-    if (res instanceof ServerResponse) {
+    if (res instanceof http_1.ServerResponse) {
         renderProxyError(res, err.message, id);
     }
 });
-
 // Port and Host logic
 const PORT = Number(process.env.PORT) || 7860;
 const HOST = '0.0.0.0';
-
 let isAppReady = false;
-let envStatus = { valid: true, missing: [] as string[] };
-
+let envStatus = { valid: true, missing: [] };
 /**
  *Autoritative Entrypoint: We initialize the HTTP server immediately to satisfy HF Spaces health checks.
  */
-const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+const server = (0, http_1.createServer)((req, res) => {
+    var _a;
     const host = req.headers.host || "localhost";
     const fullUrl = new URL(req.url || "/", `http://${host}`);
     const { pathname } = fullUrl;
-
     // 1. Initializing State
     if (!isAppReady && !pathname.startsWith("/_next/static") && pathname !== "/favicon.ico") {
         res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -145,7 +170,6 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
             </html>
         `);
     }
-
     // 2. Maintenance / Misconfiguration State
     if (isAppReady && !envStatus.valid && pathname !== "/api/health" && !pathname.startsWith("/_next/")) {
         res.writeHead(503, { 'Content-Type': 'text/html' });
@@ -153,77 +177,68 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
             <html>
                 <body style="background:#09090b;color:#f87171;padding:2rem;font-family:sans-serif;">
                     <h1>Infrastructure Error</h1>
-                    <p>${UI_STRINGS.MAINTENANCE_MESSAGE}</p>
+                    <p>${constants_1.UI_STRINGS.MAINTENANCE_MESSAGE}</p>
                     <ul>${envStatus.missing.map(m => `<li>${m}</li>`).join('')}</ul>
                 </body>
             </html>
         `);
     }
-
     // 3. Workspace Proxying
     const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
-    const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);
-
+    const id = workspaceHostMatch ? workspaceHostMatch[1] : ((pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) ? pathname.split("/")[2] : null);
     if (id) {
-        const isReady = isNativeWorkspaceRunning(id);
+        const isReady = (0, manager_1.isNativeWorkspaceRunning)(id);
         if (isReady) {
-            const port = getNativeWorkspacePort(id) || 8080;
+            const port = (0, manager_1.getNativeWorkspacePort)(id) || 8080;
             req.headers['x-codeverse-id'] = id;
             req.headers['x-codeverse-type'] = 'workspace';
             const prefix = `/workspace/${id}`;
-            if (req.url?.startsWith(prefix)) {
+            if ((_a = req.url) === null || _a === void 0 ? void 0 : _a.startsWith(prefix)) {
                 req.url = req.url.substring(prefix.length);
-                if (!req.url.startsWith("/")) req.url = "/" + req.url;
+                if (!req.url.startsWith("/"))
+                    req.url = "/" + req.url;
             }
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
     }
-
     // 4. Default Next.js Handle
     handle(req, res);
 });
-
 // Setup Sockets
-const io = new Server(server, { path: "/api/socketio" });
-const yjsWss = new WebSocketServer({ noServer: true });
-
+const io = new socket_io_1.Server(server, { path: "/api/socketio" });
+const yjsWss = new ws_1.WebSocketServer({ noServer: true });
 // Start Listening Immediately
 server.listen(PORT, HOST, () => {
     console.log('----------------------------------------------------');
-    console.log(`[READY] ${APP_CONFIG.NAME} ${APP_CONFIG.VERSION}`);
+    console.log(`[READY] ${constants_1.APP_CONFIG.NAME} ${constants_1.APP_CONFIG.VERSION}`);
     console.log(`[READY] Interface: ${HOST}:${PORT}`);
     console.log('----------------------------------------------------');
 });
-
 // Background Async Initialization
 (async () => {
     try {
         console.log("[BOOT] Starting Next.js preparation...");
         await app.prepare();
         console.log("[BOOT] Next.js payload ready.");
-
-        envStatus = validateEnvironment();
+        envStatus = (0, env_config_1.validateEnvironment)();
         if (envStatus.valid) {
             console.log("[BOOT] Environment validated. Synchronizing database...");
-            await initDb(dbClient);
+            await (0, schema_1.initDb)(db_1.client);
             console.log("[BOOT] Database synchronized.");
-            
             // Reconnect and Warmup
-            reconnectRunningWorkspaces().catch(() => {});
-            prewarmWorkspace({ id: 'baseline-warmup', userId: 'system', projectName: 'CodeVerse-Internal' }).catch(() => {});
-            
+            (0, manager_1.reconnectRunningWorkspaces)().catch(() => { });
+            (0, manager_1.prewarmWorkspace)({ id: 'baseline-warmup', userId: 'system', projectName: 'CodeVerse-Internal' }).catch(() => { });
             // Crons and Persistence
-            HFStorage.startAutoSave(INFRA_CONFIG.PERSISTENCE_INTERVAL_MS * 5); 
-            startAutoSleepCron();
+            storage_1.HFStorage.startAutoSave(constants_1.INFRA_CONFIG.PERSISTENCE_INTERVAL_MS * 5);
+            (0, auto_sleep_1.startAutoSleepCron)();
         }
-
         isAppReady = true;
         console.log("[BOOT] Global state stabilized. Application is fully operational.");
-    } catch (err) {
+    }
+    catch (err) {
         console.error("[BOOT:ERROR] Fatal initialization failure:", err);
     }
 })();
-
 // Terminal and Collaboration Handlers
 server.on("upgrade", (req, socket, head) => {
     const { pathname } = new URL(req.url || "/", `http://${req.headers.host}`);
@@ -233,38 +248,38 @@ server.on("upgrade", (req, socket, head) => {
         });
     }
 });
-
-yjsWss.on("connection", (conn: WebSocket, request: IncomingMessage) => {
+yjsWss.on("connection", (conn, request) => {
     const { doc, awareness } = getOrCreateDoc(new URL(request.url || "/", "http://l").searchParams.get('doc') || "default");
     conn.binaryType = "arraybuffer";
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, 0);
     syncProtocol.writeSyncStep1(encoder, doc);
     conn.send(encoding.toUint8Array(encoder));
-
-    conn.on("message", (message: ArrayBuffer) => {
+    conn.on("message", (message) => {
         const encoder = encoding.createEncoder();
         const decoder = decoding.createDecoder(new Uint8Array(message));
         const messageType = decoding.readVarUint(decoder);
         if (messageType === 0) {
             encoding.writeVarUint(encoder, 0);
             syncProtocol.readSyncMessage(decoder, encoder, doc, null);
-            if (encoding.length(encoder) > 1) conn.send(encoding.toUint8Array(encoder));
+            if (encoding.length(encoder) > 1)
+                conn.send(encoding.toUint8Array(encoder));
         }
     });
 });
-
 io.on("connection", (socket) => {
-    let shell: pty.IPty | null = null;
+    let shell = null;
     socket.on("terminal:start", ({ cols, rows }) => {
-        shell = pty.spawn(process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash"), [], {
+        shell = pty.spawn(process.env.SHELL || (os_1.default.platform() === "win32" ? "powershell.exe" : "bash"), [], {
             cols: cols || 80,
             rows: rows || 24,
-            cwd: INFRA_CONFIG.WORKSPACE_ROOT,
-            env: process.env as Record<string, string>,
+            cwd: constants_1.INFRA_CONFIG.WORKSPACE_ROOT,
+            env: process.env,
         });
-        shell.onData((data: string) => socket.emit("terminal:data", data));
+        shell.onData((data) => socket.emit("terminal:data", data));
     });
-    socket.on("terminal:write", (data) => { if (shell) shell.write(data); });
-    socket.on("disconnect", () => { if (shell) shell.kill(); });
+    socket.on("terminal:write", (data) => { if (shell)
+        shell.write(data); });
+    socket.on("disconnect", () => { if (shell)
+        shell.kill(); });
 });

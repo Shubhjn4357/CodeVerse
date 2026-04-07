@@ -5,6 +5,7 @@ import { client as db } from "@/lib/db";
 import { randomUUID } from "crypto";
 import type { Adapter, AdapterUser, AdapterAccount, AdapterSession, VerificationToken } from "@auth/core/adapters";
 import { JWT } from "next-auth/jwt";
+import { AUTH_CONFIG, ROUTES } from "@/constants";
 
 /**
  * 🛰️ CodeVerse Authentication Core
@@ -274,10 +275,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         async authorize(credentials) {
           if (credentials?.username === "dev" || credentials?.username === "guest") {
               return { 
-                id: "dev-user-id", 
-                name: "Developer Guest", 
-                email: "dev@codeverse.local", 
-                image: "https://github.com/identicons/dev.png",
+                id: AUTH_CONFIG.DEV_USER_ID, 
+                name: AUTH_CONFIG.DEV_USER_NAME, 
+                email: AUTH_CONFIG.DEV_USER_EMAIL, 
+                image: AUTH_CONFIG.DEV_AVATAR,
               };
           }
           return null;
@@ -285,7 +286,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       })
     ] : []),
   ],
-  session: { strategy: "jwt" },
+  session: { strategy: AUTH_CONFIG.SESSION_STRATEGY as "jwt" | "database" },
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
@@ -303,7 +304,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
   },
   pages: {
-    signIn: "/login",
+    signIn: ROUTES.LOGIN,
   },
   debug: process.env.NODE_ENV === "development",
 });

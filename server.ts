@@ -14,7 +14,7 @@ import { Duplex } from "stream";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
 import { getNativeWorkspacePort, getAndroidPort, isNativeWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces, nativeProcesses } from "./lib/docker/manager";
 import { initDb } from "./lib/db/schema";
-import { validateEnvironment } from "./lib/env-config";
+import { ENV_CONFIG, validateEnvironment } from "./lib/env-config";
 import httpProxy from "http-proxy";
 
 /**

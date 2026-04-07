@@ -35,9 +35,12 @@ export const pendingProvisioning = new Map<string, Promise<WorkspaceOperationRes
 
 /**
  * Checks if a native workspace is currently running.
+ * Supports fuzzy matching for reconnected sessions that might use a prefix key.
  */
 export function isNativeWorkspaceRunning(id: string): boolean {
-    return nativeProcesses.has(id);
+    if (nativeProcesses.has(id)) return true;
+    // Prefix fallback for reconnected sessions
+    return Array.from(nativeProcesses.keys()).some(k => id.startsWith(k));
 }
 
 /**
@@ -108,9 +111,15 @@ export async function stopNativeWorkspace(id: string): Promise<boolean> {
 
 /**
  * Gets the internal port for a native workspace process.
+ * Supports fuzzy matching for reconnected sessions.
  */
 export function getNativeWorkspacePort(id: string): number | undefined {
-    return nativeProcesses.get(id)?.port;
+    const entry = nativeProcesses.get(id);
+    if (entry) return entry.port;
+    
+    // Prefix fallback
+    const key = Array.from(nativeProcesses.keys()).find(k => id.startsWith(k));
+    return key ? nativeProcesses.get(key)?.port : undefined;
 }
 
 /**

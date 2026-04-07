@@ -8,7 +8,8 @@ const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe
 const networkThresholds = new Map<string, number>();
 
 export async function checkIdleContainers() {
-    if (!(await isDockerAvailable())) {
+    const status = await isDockerAvailable();
+    if (!status.available) {
         return;
     }
     console.log("[Auto-Sleep] Running idle container check...");

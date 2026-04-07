@@ -59,7 +59,7 @@ export class HFStorage {
 
         // 🟢 DELTA SYNCING: Use 'download' for raw folder syncing instead of tarballs
         // This allows HF CLI to perform block-level diffing internally.
-        const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} --local-dir ${process.env.HOME || '/home/node'} --local-dir-use-symlinks False --token ${this.HF_TOKEN} --include "*" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*") || (hf download ${this.HF_DATASET_ID} --local-dir ${process.env.HOME || '/home/node'} --token ${this.HF_TOKEN})`;
+        const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} --local-dir ${process.env.HOME || '/home/node'} --local-dir-use-symlinks False --token ${this.HF_TOKEN} --include "*" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*" --exclude ".cache/*") || (hf download ${this.HF_DATASET_ID} --local-dir ${process.env.HOME || '/home/node'} --token ${this.HF_TOKEN})`;
         
         onLog?.(`[HF:STORAGE] Restoring differential profile from '${this.HF_DATASET_ID}'...`);
         await this.execAsync(cmd, onLog);
@@ -80,7 +80,8 @@ export class HFStorage {
         try {
         // 🟢 DELTA SYNCING: Use 'upload-folder' for granular updates
         // This skips files that haven't changed, making uploads nearly instant for small edits.
-        const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${process.env.HOME || '/home/node'} . --token ${this.HF_TOKEN} --message "CodeVerse Sync: ${new Date().toISOString()}" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*") || (hf upload ${this.HF_DATASET_ID} ${process.env.HOME || '/home/node'} . --token ${this.HF_TOKEN})`;
+        // We MUST exclude .cache/ and other high-volume folders to prevent HF Dataset 'CommitOperation' errors and 'Large Folder' warnings.
+        const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${process.env.HOME || '/home/node'} . --token ${this.HF_TOKEN} --message "CodeVerse Sync: ${new Date().toISOString()}" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*" --exclude ".cache/*" --exclude ".npm/*" --exclude ".local/share/code-server/*" --exclude ".vscode-server/extensions/*") || (hf upload ${this.HF_DATASET_ID} ${process.env.HOME || '/home/node'} . --token ${this.HF_TOKEN})`;
         
         onLog?.(`[HF:STORAGE] Performing differential backup to '${this.HF_DATASET_ID}'...`);
         await this.execAsync(cmd, onLog);

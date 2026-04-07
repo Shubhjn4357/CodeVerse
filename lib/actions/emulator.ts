@@ -38,7 +38,7 @@ export async function checkDeviceAvailability(platform: string, workspaceId: str
             const path = await import('path');
             
             const userId = "default-user"; 
-            const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/nodejs/app/workspaces');
+            const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
             const dataPath = path.join(/*turbopackIgnore: true*/ workspaceRoot, userId, workspaceId);
             
             try {

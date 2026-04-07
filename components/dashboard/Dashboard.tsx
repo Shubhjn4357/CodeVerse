@@ -77,7 +77,7 @@ export default function Dashboard() {
                 body: JSON.stringify({ action: "prewarm", id: latest.id })
             }).catch(console.error);
         }
-    }, [fetchProjects]);
+    }, [fetchProjects, projects]);
 
 
     const checkContainerStatuses = async () => {
@@ -226,10 +226,6 @@ export default function Dashboard() {
 
             {/* Body */}
             <div className="flex-1 overflow-hidden dashboard-grid">
-                {/* Dashboard Vitals (Strategic Integration) */}
-                <div className="col-span-full px-8 pt-6">
-                    <DashboardVitals />
-                </div>
 
                 {/* Left Panel */}
                 <div className="border-r border-(--border-subtle) flex flex-col overflow-y-auto p-6 gap-6">
@@ -281,6 +277,14 @@ export default function Dashboard() {
 
                 {/* Right Panel */}
                 <div className="flex flex-col overflow-hidden">
+
+                    {/* Project List */}
+                    <div className="flex-1 overflow-y-auto p-2">
+                    {/* Dashboard Vitals (Strategic Integration) */}
+                    <div className="col-span-full px-8 pt-6">
+                        <DashboardVitals />
+                    </div>
+
                     {/* Search + Filter */}
                     <div className="p-4 border-b border-(--border-subtle) flex items-center gap-3">
                         <div className="relative flex-1 px-2 input">
@@ -326,9 +330,6 @@ export default function Dashboard() {
                             </DropdownMenu.Portal>
                         </DropdownMenu.Root>
                     </div>
-
-                    {/* Project List */}
-                    <div className="flex-1 overflow-y-auto p-2">
                         {loading ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-2">
                                 {[...Array(8)].map((_, i) => (

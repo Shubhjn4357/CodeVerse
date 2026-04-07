@@ -182,11 +182,16 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         provisioningBus.emit(`log:${config.id}`, msg);
     };
 
-    log(`Provisioning hermetic environment for '${config.projectName}'...`);
-    
-    // 0. HF PERSISTENCE: Restore profile from Dataset if available
-    await HFStorage.syncFromDataset((msg) => log(msg));
-    HFStorage.startAutoSave(300000); // 5m auto-save
+    try {
+        log(`Provisioning hermetic environment for '${config.projectName}'...`);
+        
+        // 0. HF PERSISTENCE: Restore profile from Dataset if available
+        try {
+            await HFStorage.syncFromDataset((msg) => log(msg));
+        } catch (e) {
+            log(`[WARN] Persistent profile restoration failed: ${e instanceof Error ? e.message : String(e)}. Proceeding with clean environment.`);
+        }
+        HFStorage.startAutoSave(300000); // 5m auto-save
     
     // 1. Prepare Workspace Directory
     const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
@@ -215,93 +220,100 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         fs.writeFileSync(flagPath, new Date().toISOString());
     }
 
-    // 4. Identify Target Port
-    const port = findAvailablePort();
+        // 4. Identify Target Port
+        const port = findAvailablePort();
 
-    // 5. Spawn code-server
-    const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
-    const args = process.platform === 'win32' ? ['code-server'] : [];
-    
-    const baseArgs = [
-        '--auth', 'none',
-        '--bind-addr', `127.0.0.1:${port}`,
-        '--user-data-dir', userDataPath,
-        '--disable-telemetry',
-        '--disable-update-check',
-        workspacePath
-    ];
+        // 5. Spawn code-server
+        const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
+        const args = process.platform === 'win32' ? ['code-server'] : [];
+        
+        const baseArgs = [
+            '--auth', 'none',
+            '--bind-addr', `127.0.0.1:${port}`,
+            '--user-data-dir', userDataPath,
+            '--disable-telemetry',
+            '--disable-update-check',
+            workspacePath
+        ];
 
-    const spawnEnv: NodeJS.ProcessEnv = { ...process.env, HOME: workspacePath };
-    delete spawnEnv.PORT;
-    delete spawnEnv.SERVER_PORT;
+        const spawnEnv: NodeJS.ProcessEnv = { ...process.env, HOME: workspacePath };
+        delete spawnEnv.PORT;
+        delete spawnEnv.SERVER_PORT;
 
-    const child = spawn(shellCommand, [...args, ...baseArgs], {
-        env: spawnEnv,
-        cwd: workspacePath,
-        shell: process.platform === 'win32'
-    });
+        const child = spawn(shellCommand, [...args, ...baseArgs], {
+            env: spawnEnv,
+            cwd: workspacePath,
+            shell: process.platform === 'win32'
+        });
 
-    log(`Spawning VS Code Orchestrator (PID: ${child.pid})...`);
+        log(`Spawning VS Code Orchestrator (PID: ${child.pid})...`);
 
-    child.on('error', (err) => log(`[FATAL] IDE binary failure: ${err.message}`));
-    child.stdout.on('data', (data) => {
-        const out = data.toString().trim();
-        if (out.includes('listening on')) log(`[IDX:UP] ${out}`);
-        else if (out.length > 0) log(`[IDE:CORE] ${out}`);
-    });
+        child.on('error', (err) => log(`[FATAL] IDE binary failure: ${err.message}`));
+        child.stdout.on('data', (data) => {
+            const out = data.toString().trim();
+            if (out.includes('listening on')) log(`[IDX:UP] ${out}`);
+            else if (out.length > 0) log(`[IDE:CORE] ${out}`);
+        });
 
-    child.stderr.on('data', (data) => {
-        const err = data.toString().trim();
-        if (err.length > 0) log(`[IDE:ERR] ${err}`);
-    });
+        child.stderr.on('data', (data) => {
+            const err = data.toString().trim();
+            if (err.length > 0) log(`[IDE:ERR] ${err}`);
+        });
 
-    child.on('close', (code, signal) => {
-        log(`[IDE:EXIT] IDE process died with code ${code} (Signal: ${signal})`);
-    });
+        child.on('close', (code, signal) => {
+            log(`[IDE:EXIT] IDE process died with code ${code} (Signal: ${signal})`);
+        });
 
-    // 6. Register in active pool
-    nativeProcesses.set(config.id, { pid: child.pid!, port, process: child });
+        // 6. Register in active pool
+        nativeProcesses.set(config.id, { pid: child.pid!, port, process: child });
 
-    // 7. Handshake Loop
-    let attempts = 0;
-    while (attempts < 60) {
-        try {
-            const res = await fetch(`http://127.0.0.1:${port}`);
-            if (res.ok) {
-                log(`Handshake verified. Studio Engine Online.`);
+        // 7. Handshake Loop
+        let attempts = 0;
+        while (attempts < 60) {
+            try {
+                const res = await fetch(`http://127.0.0.1:${port}`);
+                if (res.ok) {
+                    log(`Handshake verified. Studio Engine Online.`);
 
-                if (idxConfig.onStart) {
-                    log(`Executing background onStart lifecycle hooks...`);
-                    IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg), true);
+                    if (idxConfig.onStart) {
+                        log(`Executing background onStart lifecycle hooks...`);
+                        IdxEngine.runHook(workspacePath, 'onStart', idxConfig.onStart, (msg) => log(msg), true);
+                    }
+
+                    const finalResult: WorkspaceOperationResult = {
+                        success: true,
+                        containerId: `native-${config.id}`,
+                        androidPort: config.withAndroidEmulator ? 6080 : undefined,
+                        port: port
+                    };
+                    provisioningBus.emit(`ready:${config.id}`, finalResult);
+                    return finalResult;
                 }
-
-                const finalResult = {
-                    success: true,
-                    containerId: `native-${config.id}`,
-                    androidPort: config.withAndroidEmulator ? 6080 : undefined,
-                    port: port
-                };
-                provisioningBus.emit(`ready:${config.id}`, finalResult);
-                return finalResult;
+            } catch {
+                if (attempts % 5 === 0) log(`[INFO] Scanning for IDE heartbeat... (Attempt ${attempts}/60)`);
+                if (attempts === 15) log(`[INFO] Nix evaluation in progress. Cold boot detected.`);
+                if (attempts === 45) log(`[WARN] Handshake threshold approaching. IDE core high load.`);
+                await delay(1000);
+                attempts++;
             }
-        } catch {
-            if (attempts % 5 === 0) log(`[INFO] Scanning for IDE heartbeat... (Attempt ${attempts}/60)`);
-            if (attempts === 15) log(`[INFO] Nix evaluation in progress. Cold boot detected.`);
-            if (attempts === 45) log(`[WARN] Handshake threshold approaching. IDE core high load.`);
-            await delay(1000);
-            attempts++;
         }
-    }
 
-    log(`[FATAL] Handshake timeout on 127.0.0.1:${port}.`);
-    const entry = nativeProcesses.get(config.id);
-    if (entry) {
-        entry.process.kill();
-        nativeProcesses.delete(config.id);
+        log(`[FATAL] Handshake timeout on 127.0.0.1:${port}.`);
+        const entry = nativeProcesses.get(config.id);
+        if (entry) {
+            entry.process.kill();
+            nativeProcesses.delete(config.id);
+        }
+        const errResult = { success: false, error: "IDE_HANDSHAKE_TIMEOUT" };
+        provisioningBus.emit(`error:${config.id}`, errResult);
+        return errResult;
+    } catch (e) {
+        const error = e instanceof Error ? e.message : String(e);
+        log(`[FATAL] Provisioning pipeline collapsed: ${error}`);
+        const errResult = { success: false, error: "PROVISIONING_FAILED" };
+        provisioningBus.emit(`error:${config.id}`, errResult);
+        return errResult;
     }
-    const errResult = { success: false, error: "IDE_HANDSHAKE_TIMEOUT" };
-    provisioningBus.emit(`error:${config.id}`, errResult);
-    return errResult;
 }
 
 /**

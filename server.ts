@@ -163,6 +163,7 @@ app.prepare()
         const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname?.startsWith("/workspace/") ? pathname.split("/")[2] : null);
 
         if (id) {
+            console.log("nativeProcessesId", id);
             const isReady = isNativeWorkspaceRunning(id);
             if (isReady) {
                 const port = getNativeWorkspacePort(id) || 8080;
@@ -189,7 +190,7 @@ app.prepare()
                             <style>
                                 body { background: #09090b; color: #71717a; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; overflow: hidden; }
                                 .container { text-align: center; border: 1px solid #27272a; padding: 2rem; rounded: 1rem; background: #111113; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
-                                .spinner { width: 40px; height: 40px; border: 3px solid #3f3f46; border-top-color: #3b82f6; border-radius: 50%; animate: spin 1s linear infinite; margin: 0 auto 1.5rem; }
+                                .spinner { width: 40px; height: 40px; border: 3px solid #3f3f46; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
                                 h1 { color: #f4f4f5; font-size: 1.25rem; margin: 0 0 0.5rem; }
                                 p { font-size: 0.875rem; }
                                 .id-info { font-family: monospace; color: #3b82f6; margin-top: 1rem; font-size: 0.75rem; opacity: 0.5; }

@@ -73,7 +73,9 @@ export default function BootSequenceClient() {
                                     eventSourceRef.current.close();
                                     eventSourceRef.current = null;
                                 }
-                                router.push(`/?workspace=${encodeURIComponent(id)}`);
+                                setTimeout(() => {
+                                    router.push(`/?workspace=${encodeURIComponent(id)}`);
+                                }, 100);
                             }
                         } catch (e) {
                             console.error("Failed to parse ready event:", e);
@@ -127,7 +129,7 @@ export default function BootSequenceClient() {
             <div className="bg-[#0a0a0a] rounded-xl p-4 min-h-[300px] border border-[#222] shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] overflow-y-auto font-mono text-xs md:text-sm h-[500px] relative group">
                 <div className="absolute top-4 right-4 text-[#333] group-hover:text-zinc-600 transition-colors pointer-events-none uppercase text-[10px] tracking-widest font-bold flex items-center gap-2">
                     <Terminal size={12} />
-                    IDX Studio Engine
+                    CodeVerse Studio Engine
                 </div>
                 
                 {logs.map((log, i) => (

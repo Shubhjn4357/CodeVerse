@@ -106,7 +106,7 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                 <div className="w-full max-w-2xl bg-[#0a0a0a] rounded-xl p-4 font-mono text-[11px] overflow-y-auto h-72 z-10 border border-[#222] shadow-[inset_0_0_40px_rgba(0,0,0,0.8)] relative group">
                     <div className="absolute top-4 right-4 text-[#333] group-hover:text-zinc-600 transition-colors pointer-events-none uppercase text-[10px] tracking-widest font-bold flex items-center gap-2">
                         <Smartphone size={12} />
-                        IDX Studio Engine
+                        CodeVerse Studio Engine
                     </div>
                     {buildLogs.map((log, i) => (
                         <div key={i} className="mb-0.5 leading-relaxed tracking-tight text-zinc-400">

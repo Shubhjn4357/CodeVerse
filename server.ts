@@ -155,17 +155,20 @@ app.prepare()
 
         if (id) {
             // PROXY LOGIC (April 2026): Only proxy if not a main dashboard request.
-            // Removed 302 redirect to prevent the 'Inside-Iframe Loop'.
             const isReady = isNativeWorkspaceRunning(id);
             if (isReady) {
                 const port = getNativeWorkspacePort(id) || 8080;
                 req.headers['x-codeverse-id'] = id;
                 req.headers['x-codeverse-type'] = 'workspace';
                 
-                if (pathname?.startsWith("/workspace/")) {
-                    req.url = "/" + pathname.split("/").slice(3).join("/");
+                // CRITICAL: Preserve Query Parameters (?folder=...)
+                const prefix = `/workspace/${id}`;
+                if (req.url?.startsWith(prefix)) {
+                    req.url = req.url.substring(prefix.length);
+                    if (!req.url.startsWith("/")) req.url = "/" + req.url;
                 }
                 
+                console.log(`[PROXY:IDE] Mapping ${pathname} -> 127.0.0.1:${port}${req.url}`);
                 return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
             }
             // Fallthrough to Next.js handler if not ready
@@ -173,10 +176,17 @@ app.prepare()
 
         if (pathname?.startsWith("/android/")) {
             const port = getAndroidPort() || 6080;
-            const id = pathname.split("/")[2] || "android-unified";
-            req.headers['x-codeverse-id'] = id;
+            const aId = pathname.split("/")[2] || "android-unified";
+            req.headers['x-codeverse-id'] = aId;
             req.headers['x-codeverse-type'] = 'android';
-            req.url = "/" + pathname.split("/").slice(3).join("/");
+            
+            const prefix = `/android/${aId}`;
+            if (req.url?.startsWith(prefix)) {
+                req.url = req.url.substring(prefix.length);
+                if (!req.url.startsWith("/")) req.url = "/" + req.url;
+            }
+
+            console.log(`[PROXY:ANDROID] Mapping ${pathname} -> 127.0.0.1:${port}${req.url}`);
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
 
@@ -210,9 +220,14 @@ app.prepare()
             const port = getNativeWorkspacePort(id) || 8080;
             req.headers['x-codeverse-id'] = id;
             req.headers['x-codeverse-type'] = 'workspace';
-            if (pathname?.startsWith("/workspace/")) {
-                req.url = "/" + pathname.split("/").slice(3).join("/");
+            
+            const prefix = `/workspace/${id}`;
+            if (req.url?.startsWith(prefix)) {
+                req.url = req.url.substring(prefix.length);
+                if (!req.url.startsWith("/")) req.url = "/" + req.url;
             }
+            
+            console.log(`[PROXY:WS] Upgrading ${pathname} -> 127.0.0.1:${port}${req.url}`);
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
 
@@ -225,10 +240,16 @@ app.prepare()
 
         if (pathname?.startsWith("/android/")) {
             const port = getAndroidPort() || 6080;
-            const id = pathname.split("/")[2] || "android-unified";
-            req.headers['x-codeverse-id'] = id;
+            const aId = pathname.split("/")[2] || "android-unified";
+            req.headers['x-codeverse-id'] = aId;
             req.headers['x-codeverse-type'] = 'android';
-            req.url = "/" + pathname.split("/").slice(3).join("/");
+            
+            const prefix = `/android/${aId}`;
+            if (req.url?.startsWith(prefix)) {
+                req.url = req.url.substring(prefix.length);
+                if (!req.url.startsWith("/")) req.url = "/" + req.url;
+            }
+            
             return proxy.ws(req, socket, head, { target: `http://127.0.0.1:${port}` });
         }
     });

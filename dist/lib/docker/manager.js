@@ -43,6 +43,8 @@ exports.pendingProvisioning = new Map();
 function isNativeWorkspaceRunning(id) {
     if (exports.nativeProcesses.has(id))
         return true;
+    if (exports.pendingProvisioning.has(id))
+        return true;
     // Prefix fallback for reconnected sessions
     return Array.from(exports.nativeProcesses.keys()).some(k => id.startsWith(k));
 }
@@ -174,7 +176,14 @@ async function performProvisioning(config) {
             fs_1.default.writeFileSync(path_1.default.join(workspacePath, '.codeverse-id'), config.id);
             log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
         }
-        // 2. IDX Engine: Sync Environment
+        // 2. Register in active pool (EARLY REGISTRATION: satisfy proxy health checks)
+        const port = findAvailablePort();
+        exports.nativeProcesses.set(config.id, {
+            pid: -1, // PID not yet available
+            port,
+            process: { kill: () => true, pid: -1 }
+        });
+        // 3. IDX Engine: Sync Environment
         const idxConfig = idx_engine_1.IdxEngine.getIdxConfig(workspacePath);
         log(`Declarative config detected (Packages: ${idxConfig.packages.length}). Initializing synchronization...`);
         await idx_engine_1.IdxEngine.syncNixEnvironment(workspacePath, idxConfig, (msg) => log(msg));
@@ -186,8 +195,6 @@ async function performProvisioning(config) {
             }
             fs_1.default.writeFileSync(flagPath, new Date().toISOString());
         }
-        // 4. Identify Target Port
-        const port = findAvailablePort();
         // 5. Spawn code-server
         const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
         const args = process.platform === 'win32' ? ['code-server'] : [];
@@ -223,8 +230,9 @@ async function performProvisioning(config) {
         });
         child.on('close', (code, signal) => {
             log(`[IDE:EXIT] IDE process died with code ${code} (Signal: ${signal})`);
+            exports.nativeProcesses.delete(config.id);
         });
-        // 6. Register in active pool
+        // 6. Update Registry with real Process
         exports.nativeProcesses.set(config.id, { pid: child.pid, port, process: child });
         // 7. Handshake Loop
         let attempts = 0;

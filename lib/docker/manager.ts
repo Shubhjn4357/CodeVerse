@@ -39,6 +39,7 @@ export const pendingProvisioning = new Map<string, Promise<WorkspaceOperationRes
  */
 export function isNativeWorkspaceRunning(id: string): boolean {
     if (nativeProcesses.has(id)) return true;
+    if (pendingProvisioning.has(id)) return true;
     // Prefix fallback for reconnected sessions
     return Array.from(nativeProcesses.keys()).some(k => id.startsWith(k));
 }
@@ -204,7 +205,15 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
     }
 
-    // 2. IDX Engine: Sync Environment
+    // 2. Register in active pool (EARLY REGISTRATION: satisfy proxy health checks)
+    const port = findAvailablePort();
+    nativeProcesses.set(config.id, { 
+        pid: -1, // PID not yet available
+        port, 
+        process: { kill: () => true, pid: -1 } as unknown as WorkspaceProcess 
+    });
+
+    // 3. IDX Engine: Sync Environment
     const idxConfig = IdxEngine.getIdxConfig(workspacePath);
     log(`Declarative config detected (Packages: ${idxConfig.packages.length}). Initializing synchronization...`);
     
@@ -218,9 +227,6 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         }
         fs.writeFileSync(flagPath, new Date().toISOString());
     }
-
-        // 4. Identify Target Port
-        const port = findAvailablePort();
 
         // 5. Spawn code-server
         const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
@@ -261,9 +267,10 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
 
         child.on('close', (code, signal) => {
             log(`[IDE:EXIT] IDE process died with code ${code} (Signal: ${signal})`);
+            nativeProcesses.delete(config.id);
         });
 
-        // 6. Register in active pool
+        // 6. Update Registry with real Process
         nativeProcesses.set(config.id, { pid: child.pid!, port, process: child });
 
         // 7. Handshake Loop

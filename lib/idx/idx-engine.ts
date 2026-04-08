@@ -164,7 +164,8 @@ export class IdxEngine {
                 ...process.env, 
                 HOME: workspacePath,
                 NIX_CONFIG: 'experimental-features = nix-command flakes'
-            }
+            },
+            timeout: 300000 // 5-minute safety timeout
         });
 
         child.stdout.on('data', (data) => log(data.toString().trim()));

@@ -205,8 +205,8 @@ const server = (0, http_1.createServer)((req, res) => {
     const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
     const id = workspaceHostMatch ? workspaceHostMatch[1] : ((pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) ? pathname.split("/")[2] : null);
     if (id) {
-        const isReady = (0, manager_1.isNativeWorkspaceRunning)(id);
-        if (isReady) {
+        const isRunning = (0, manager_1.isNativeWorkspaceRunning)(id);
+        if (isRunning) {
             const port = (0, manager_1.getNativeWorkspacePort)(id) || 8080;
             req.headers['x-codeverse-id'] = id;
             req.headers['x-codeverse-type'] = 'workspace';
@@ -219,26 +219,30 @@ const server = (0, http_1.createServer)((req, res) => {
             return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
         else if (!(pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/api/"))) {
-            // 🚑 WORKSPACE BOOTING FALLBACK: Prevent Next.js 404 while workspace is initializing
+            // 🚑 WORKSPACE OFFLINE OR BOOTING: Detect if it's truly gone or just waking up
             res.writeHead(503, { 'Content-Type': 'text/html', 'Retry-After': '5' });
             return res.end(`
                 <html>
                     <head>
-                        <title>CodeVerse | Booting Workspace</title>
+                        <title>CodeVerse | Workspace Status</title>
                         <style>
                             body { background: #09090b; color: #71717a; font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-                            .container { text-align: center; border: 1px solid #27272a; padding: 2rem; border-radius: 1rem; background: #111113; }
-                            .spinner { width: 40px; height: 40px; border: 3px solid #3f3f46; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
-                            h1 { color: #f4f4f5; font-size: 1.25rem; }
+                            .container { text-align: center; border: 1px solid #27272a; padding: 2.5rem; border-radius: 1rem; background: #111113; max-width: 450px; }
+                            .spinner { width: 30px; height: 30px; border: 2px solid #3f3f46; border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1.5rem; }
+                            h1 { color: #f4f4f5; font-size: 1.25rem; margin: 0 0 1rem; }
+                            p { font-size: 0.9rem; margin-bottom: 2rem; line-height: 1.6; }
+                            .btn { background: #3b82f6; color: white; padding: 0.75rem 1.5rem; border-radius: 0.5rem; text-decoration: none; font-weight: bold; display: inline-block; transition: background 0.2s; }
+                            .btn:hover { background: #2563eb; }
                             @keyframes spin { to { transform: rotate(360deg); } }
                         </style>
-                        <script>setTimeout(() => window.location.reload(), 3000);</script>
+                        <script>setTimeout(() => window.location.reload(), 5000);</script>
                     </head>
                     <body>
                         <div class="container">
                             <div class="spinner"></div>
-                            <h1>Workspace is Booting</h1>
-                            <p>Preparing your agentic session...</p>
+                            <h1>Provisioning Environment</h1>
+                            <p>We're restoring your workspace from cold storage. This usually takes 30-60 seconds depending on the Nix profile complexity.</p>
+                            <a href="/" class="btn">Return to Dashboard</a>
                         </div>
                     </body>
                 </html>
@@ -250,7 +254,7 @@ const server = (0, http_1.createServer)((req, res) => {
 });
 // Setup Sockets
 const io = new socket_io_1.Server(server, { path: "/api/socketio" });
-const yjsWss = new ws_1.WebSocketServer({ noServer: true });
+const shoket = new ws_1.WebSocketServer({ noServer: true });
 // Start Listening Immediately
 server.listen(PORT, HOST, () => {
     console.log('----------------------------------------------------');
@@ -287,13 +291,13 @@ server.listen(PORT, HOST, () => {
 server.on("upgrade", (req, socket, head) => {
     const { pathname } = new URL(req.url || "/", `http://${req.headers.host}`);
     if (pathname === "/api/collab") {
-        yjsWss.handleUpgrade(req, socket, head, (ws) => {
-            yjsWss.emit("connection", ws, req);
+        shoket.handleUpgrade(req, socket, head, (ws) => {
+            shoket.emit("connection", ws, req);
         });
     }
 });
-yjsWss.on("connection", (conn, request) => {
-    const { doc, awareness } = getOrCreateDoc(new URL(request.url || "/", "http://l").searchParams.get('doc') || "default");
+shoket.on("connection", (conn, request) => {
+    const { doc } = getOrCreateDoc(new URL(request.url || "/", "http://l").searchParams.get('doc') || "default");
     conn.binaryType = "arraybuffer";
     const encoder = encoding.createEncoder();
     encoding.writeVarUint(encoder, 0);

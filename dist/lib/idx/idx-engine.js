@@ -12,6 +12,15 @@ const child_process_1 = require("child_process");
  * Refactored for 2026 Asynchronous Execution to prevent Event Loop blocking.
  */
 class IdxEngine {
+    static async hasCommand(command) {
+        const probeCommand = process.platform === 'win32' ? 'where' : 'command';
+        const probeArgs = process.platform === 'win32' ? [command] : ['-v', command];
+        return await new Promise((resolve) => {
+            const child = (0, child_process_1.spawn)(probeCommand, probeArgs, { shell: process.platform !== 'win32' });
+            child.on('close', (code) => resolve(code === 0));
+            child.on('error', () => resolve(false));
+        });
+    }
     /**
      * Returns a robust baseline configuration for workspaces without a dev.nix.
      */
@@ -19,7 +28,7 @@ class IdxEngine {
         return {
             packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker', 'pkgs.python3Packages.huggingface-hub'],
             onCreate: 'npm install',
-            onStart: 'sleep 5 && npm run dev'
+            onStart: process.platform === 'win32' ? 'Start-Sleep -Seconds 5; npm run dev' : 'sleep 5 && npm run dev'
         };
     }
     /**
@@ -60,25 +69,14 @@ class IdxEngine {
         const log = (msg) => { if (onLog)
             onLog(`[IDX:NIX] ${msg}`); };
         log(`Syncing system packages: ${config.packages.join(', ')}...`);
+        const hasNix = await this.hasCommand('nix');
+        if (!hasNix) {
+            log(`Nix is unavailable on this host. Skipping declarative package sync.`);
+            return;
+        }
         // CACHIX ACCELERATION: Robust check for binary existence to prevent ENOENT crash
         const cachixName = process.env.CACHIX_CACHE_NAME || 'code-nix';
-        let hasCachix = false;
-        try {
-            await new Promise((resolve) => {
-                const check = (0, child_process_1.spawn)('command', ['-v', 'cachix'], { shell: true });
-                check.on('close', (code) => {
-                    hasCachix = (code === 0);
-                    resolve();
-                });
-                check.on('error', () => {
-                    hasCachix = false;
-                    resolve();
-                });
-            });
-        }
-        catch (_a) {
-            hasCachix = false;
-        }
+        const hasCachix = await this.hasCommand('cachix');
         if (hasCachix) {
             const cachixToken = process.env.CACHIX_AUTH_TOKEN;
             if (cachixToken) {
@@ -99,7 +97,7 @@ class IdxEngine {
                     child.on('close', (code) => code === 0 ? resolve() : reject(new Error(`Cachix failed with code ${code}`)));
                 });
             }
-            catch (_b) {
+            catch (_a) {
                 log(`[WARN] Cachix setup bypassed. Falling back to default binary cache.`);
             }
         }
@@ -120,7 +118,7 @@ class IdxEngine {
                     return;
                 }
             }
-            catch (_c) {
+            catch (_b) {
                 log(`[WARN] Manifest corruption detected. Forcing re-sync.`);
             }
         }
@@ -155,6 +153,7 @@ class IdxEngine {
             });
             child.stdout.on('data', (data) => log(data.toString().trim()));
             child.stderr.on('data', (data) => log(`[INFO] ${data.toString().trim()}`));
+            child.on('error', (error) => reject(error));
             child.on('close', (code) => {
                 if (code === 0) {
                     fs_1.default.writeFileSync(manifestPath, JSON.stringify({ packages: config.packages, timestamp: new Date().toISOString() }));
@@ -183,12 +182,18 @@ class IdxEngine {
             const spawnEnv = { ...process.env, HOME: workspacePath };
             delete spawnEnv.PORT;
             delete spawnEnv.SERVER_PORT;
-            const child = (0, child_process_1.spawn)('/bin/bash', ['-c', script], {
+            const shellCommand = process.platform === 'win32' ? 'powershell.exe' : '/bin/bash';
+            const shellArgs = process.platform === 'win32' ? ['-NoProfile', '-Command', script] : ['-c', script];
+            const child = (0, child_process_1.spawn)(shellCommand, shellArgs, {
                 cwd: workspacePath,
                 env: spawnEnv
             });
             child.stdout.on('data', (data) => log(data.toString().trim()));
             child.stderr.on('data', (data) => log(`[WARN] ${data.toString().trim()}`));
+            child.on('error', (error) => {
+                log(`[ERROR] ${error.message}`);
+                reject(error);
+            });
             child.on('close', (code) => {
                 if (code === 0) {
                     log(`Hook ${hookName} completed successfully.`);

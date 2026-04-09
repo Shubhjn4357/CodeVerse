@@ -1,6 +1,7 @@
 "use server";
 
 import Docker from 'dockerode';
+import { ENV_CONFIG } from '@/lib/env-config';
 
 const docker = new Docker({ 
     socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' 
@@ -38,7 +39,7 @@ export async function checkDeviceAvailability(platform: string, workspaceId: str
             const path = await import('path');
             
             const userId = "default-user"; 
-            const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
+            const workspaceRoot = ENV_CONFIG.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
             const dataPath = path.join(/*turbopackIgnore: true*/ workspaceRoot, userId, workspaceId);
             
             try {

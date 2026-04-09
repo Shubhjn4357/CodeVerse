@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { ENV_CONFIG } from '../env-config';
 
 /**
  * Hugging Face Storage Utility for 2026 CodeVerse Persistence.
@@ -9,7 +10,11 @@ export class HFStorage {
     private static readonly HF_TOKEN = process.env.HF_TOKEN;
     private static readonly HF_DATASET_ID = process.env.HF_DATASET_ID;
     private static readonly PROFILE_PATH = path.join(process.env.HOME || '/home/node', '.nix-profile');
-    private static readonly WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/home/node/w';
+    private static readonly WORKSPACE_ROOT = ENV_CONFIG.WORKSPACE_ROOT;
+
+    private static get isPersistenceRuntimeEnabled(): boolean {
+        return Boolean(ENV_CONFIG.SPACE_ID && this.HF_TOKEN && this.HF_DATASET_ID && process.platform !== 'win32');
+    }
 
     /**
      * Internal helper for asynchronous execution with logging.
@@ -40,6 +45,7 @@ export class HFStorage {
                 if (code === 0) resolve();
                 else reject(new Error(`Command failed with code ${code}: ${command}`));
             });
+            child.on('error', (error) => reject(error));
         });
     }
 
@@ -47,7 +53,7 @@ export class HFStorage {
      * Synchronizes the environment FROM the Hugging Face Dataset (Pull).
      */
     static async syncFromDataset(onLog?: (msg: string) => void): Promise<void> {
-        if (!this.HF_TOKEN || !this.HF_DATASET_ID) {
+        if (!this.isPersistenceRuntimeEnabled) {
             onLog?.(`[HF:STORAGE] Persistence layer inactive. Missing credentials.`);
             return;
         }
@@ -80,7 +86,7 @@ export class HFStorage {
      * Synchronizes the environment TO the Hugging Face Dataset (Push).
      */
     static async syncToDataset(onLog?: (msg: string) => void): Promise<void> {
-        if (!this.HF_TOKEN || !this.HF_DATASET_ID) return;
+        if (!this.isPersistenceRuntimeEnabled) return;
 
         try {
             onLog?.(`[HF:STORAGE] Saving persistent profile to '${this.HF_DATASET_ID}'...`);
@@ -107,7 +113,7 @@ export class HFStorage {
      */
     private static autoSaveStarted = false;
     static startAutoSave(intervalMs: number = 300000) {
-        if (this.autoSaveStarted) return;
+        if (this.autoSaveStarted || !this.isPersistenceRuntimeEnabled) return;
         this.autoSaveStarted = true;
         
         console.log(`[HF:STORAGE] Persistence heartbeat initialized (Interval: ${intervalMs}ms)`);

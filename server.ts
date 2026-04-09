@@ -1,3 +1,5 @@
+import "dotenv/config";
+
 /**
  * 🛰️ GLOBAL STABILIZATION (April 2026): Catch unhandled errors that cause HF Space restarts.
  */
@@ -289,7 +291,9 @@ server.listen(PORT, HOST, () => {
             
             // Reconnect and Warmup
             reconnectRunningWorkspaces().catch(() => {});
-            prewarmWorkspace({ id: 'baseline-warmup', userId: 'system', projectName: 'CodeVerse-Internal' }).catch(() => {});
+            if (process.env.ENABLE_BASELINE_PREWARM === 'true') {
+                prewarmWorkspace({ id: 'baseline-warmup', userId: 'system', projectName: 'CodeVerse-Internal' }).catch(() => {});
+            }
             
             // Crons and Persistence
             HFStorage.startAutoSave(INFRA_CONFIG.PERSISTENCE_INTERVAL_MS * 5); 

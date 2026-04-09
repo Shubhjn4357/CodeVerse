@@ -36,6 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
 /**
  * 🛰️ GLOBAL STABILIZATION (April 2026): Catch unhandled errors that cause HF Space restarts.
  */
@@ -294,7 +295,9 @@ server.listen(PORT, HOST, () => {
             console.log("[BOOT] Database synchronized.");
             // Reconnect and Warmup
             (0, manager_1.reconnectRunningWorkspaces)().catch(() => { });
-            (0, manager_1.prewarmWorkspace)({ id: 'baseline-warmup', userId: 'system', projectName: 'CodeVerse-Internal' }).catch(() => { });
+            if (process.env.ENABLE_BASELINE_PREWARM === 'true') {
+                (0, manager_1.prewarmWorkspace)({ id: 'baseline-warmup', userId: 'system', projectName: 'CodeVerse-Internal' }).catch(() => { });
+            }
             // Crons and Persistence
             storage_1.HFStorage.startAutoSave(constants_1.INFRA_CONFIG.PERSISTENCE_INTERVAL_MS * 5);
             (0, auto_sleep_1.startAutoSleepCron)();

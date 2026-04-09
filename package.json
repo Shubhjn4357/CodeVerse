@@ -6,7 +6,7 @@
     "dev": "next dev",
     "prebuild": "npx rimraf dist",
     "build": "next build && tsc server.ts --esModuleInterop --skipLibCheck --target es2018 --module commonjs --moduleResolution node --downlevelIteration --outDir ./dist",
-    "start": "node dist/server.js",
+    "start": "cross-env NODE_ENV=production node dist/server.js",
     "lint": "eslint . --ignore-pattern dist/ --ignore-pattern .next/"
   },
   "dependencies": {
@@ -31,9 +31,11 @@
     "@xterm/xterm": "^6.0.0",
     "ai": "6.0.146",
     "clsx": "^2.1.1",
+    "cross-env": "^10.1.0",
     "cmdk": "^1.1.1",
     "date-fns": "^4.1.0",
     "dockerode": "^4.0.10",
+    "dotenv": "^17.2.3",
     "framer-motion": "^12.38.0",
     "http-proxy": "^1.18.1",
     "lib0": "^0.2.117",

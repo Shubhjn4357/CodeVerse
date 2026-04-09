@@ -7,10 +7,14 @@ exports.HFStorage = void 0;
 const child_process_1 = require("child_process");
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
+const env_config_1 = require("../env-config");
 /**
  * Hugging Face Storage Utility for 2026 CodeVerse Persistence.
  */
 class HFStorage {
+    static get isPersistenceRuntimeEnabled() {
+        return Boolean(env_config_1.ENV_CONFIG.SPACE_ID && this.HF_TOKEN && this.HF_DATASET_ID && process.platform !== 'win32');
+    }
     /**
      * Internal helper for asynchronous execution with logging.
      */
@@ -40,13 +44,14 @@ class HFStorage {
                 else
                     reject(new Error(`Command failed with code ${code}: ${command}`));
             });
+            child.on('error', (error) => reject(error));
         });
     }
     /**
      * Synchronizes the environment FROM the Hugging Face Dataset (Pull).
      */
     static async syncFromDataset(onLog) {
-        if (!this.HF_TOKEN || !this.HF_DATASET_ID) {
+        if (!this.isPersistenceRuntimeEnabled) {
             onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Persistence layer inactive. Missing credentials.`);
             return;
         }
@@ -77,7 +82,7 @@ class HFStorage {
      * Synchronizes the environment TO the Hugging Face Dataset (Push).
      */
     static async syncToDataset(onLog) {
-        if (!this.HF_TOKEN || !this.HF_DATASET_ID)
+        if (!this.isPersistenceRuntimeEnabled)
             return;
         try {
             onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Saving persistent profile to '${this.HF_DATASET_ID}'...`);
@@ -99,7 +104,7 @@ class HFStorage {
         }
     }
     static startAutoSave(intervalMs = 300000) {
-        if (this.autoSaveStarted)
+        if (this.autoSaveStarted || !this.isPersistenceRuntimeEnabled)
             return;
         this.autoSaveStarted = true;
         console.log(`[HF:STORAGE] Persistence heartbeat initialized (Interval: ${intervalMs}ms)`);
@@ -112,7 +117,7 @@ exports.HFStorage = HFStorage;
 HFStorage.HF_TOKEN = process.env.HF_TOKEN;
 HFStorage.HF_DATASET_ID = process.env.HF_DATASET_ID;
 HFStorage.PROFILE_PATH = path_1.default.join(process.env.HOME || '/home/node', '.nix-profile');
-HFStorage.WORKSPACE_ROOT = process.env.WORKSPACE_ROOT || '/home/node/w';
+HFStorage.WORKSPACE_ROOT = env_config_1.ENV_CONFIG.WORKSPACE_ROOT;
 /**
  * Starts the periodic persistence interval (Singleton Heartbeat).
  */

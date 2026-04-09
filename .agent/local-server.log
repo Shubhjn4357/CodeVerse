@@ -1,0 +1,18 @@
+[BOOT] Starting Next.js preparation...
+----------------------------------------------------
+[READY] CodeVerse 1.0.0-stable
+[READY] Interface: 0.0.0.0:7860
+----------------------------------------------------
+[BOOT] Next.js payload ready.
+[BOOT] Environment validated. Synchronizing database...
+[SYSTEM] Dev Seeding: 'Developer Guest' user ready.
+[BOOT] Database synchronized.
+[BOOT] Probing filesystem segment: d:\Code\codeverse\workspaces for existing sessions...
+[Auto-Sleep] Cron initialized. Running every 30 minutes.
+[BOOT] Global state stabilized. Application is fully operational.
+⨯ SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)
+    at JSON.parse (<anonymous>)
+⨯ SyntaxError: Expected property name or '}' in JSON at position 1 (line 1 column 2)
+    at JSON.parse (<anonymous>)
+(node:7268) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)

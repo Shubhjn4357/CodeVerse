@@ -16,6 +16,17 @@ export interface IdxConfig {
  * Refactored for 2026 Asynchronous Execution to prevent Event Loop blocking.
  */
 export class IdxEngine {
+  private static async hasCommand(command: string): Promise<boolean> {
+    const probeCommand = process.platform === 'win32' ? 'where' : 'command';
+    const probeArgs = process.platform === 'win32' ? [command] : ['-v', command];
+
+    return await new Promise<boolean>((resolve) => {
+      const child = spawn(probeCommand, probeArgs, { shell: process.platform !== 'win32' });
+      child.on('close', (code) => resolve(code === 0));
+      child.on('error', () => resolve(false));
+    });
+  }
+
   /**
    * Returns a robust baseline configuration for workspaces without a dev.nix.
    */
@@ -23,7 +34,7 @@ export class IdxEngine {
     return {
       packages: ['pkgs.nodejs', 'pkgs.go', 'pkgs.python3', 'pkgs.docker', 'pkgs.python3Packages.huggingface-hub'],
       onCreate: 'npm install',
-      onStart: 'sleep 5 && npm run dev'
+      onStart: process.platform === 'win32' ? 'Start-Sleep -Seconds 5; npm run dev' : 'sleep 5 && npm run dev'
     };
   }
 
@@ -68,25 +79,15 @@ export class IdxEngine {
     const log = (msg: string) => { if (onLog) onLog(`[IDX:NIX] ${msg}`); };
     log(`Syncing system packages: ${config.packages.join(', ')}...`);
 
+    const hasNix = await this.hasCommand('nix');
+    if (!hasNix) {
+      log(`Nix is unavailable on this host. Skipping declarative package sync.`);
+      return;
+    }
+
     // CACHIX ACCELERATION: Robust check for binary existence to prevent ENOENT crash
     const cachixName = process.env.CACHIX_CACHE_NAME || 'code-nix';
-    let hasCachix = false;
-    
-    try {
-        await new Promise<void>((resolve) => {
-            const check = spawn('command', ['-v', 'cachix'], { shell: true });
-            check.on('close', (code) => {
-                hasCachix = (code === 0);
-                resolve();
-            });
-            check.on('error', () => {
-                hasCachix = false;
-                resolve();
-            });
-        });
-    } catch {
-        hasCachix = false;
-    }
+    const hasCachix = await this.hasCommand('cachix');
 
     if (hasCachix) {
       const cachixToken = process.env.CACHIX_AUTH_TOKEN;
@@ -170,6 +171,7 @@ export class IdxEngine {
 
         child.stdout.on('data', (data) => log(data.toString().trim()));
         child.stderr.on('data', (data) => log(`[INFO] ${data.toString().trim()}`));
+        child.on('error', (error) => reject(error));
         
         child.on('close', (code) => {
             if (code === 0) {
@@ -200,13 +202,20 @@ export class IdxEngine {
       delete spawnEnv.PORT;
       delete spawnEnv.SERVER_PORT;
 
-      const child = spawn('/bin/bash', ['-c', script], {
+      const shellCommand = process.platform === 'win32' ? 'powershell.exe' : '/bin/bash';
+      const shellArgs = process.platform === 'win32' ? ['-NoProfile', '-Command', script] : ['-c', script];
+
+      const child = spawn(shellCommand, shellArgs, {
         cwd: workspacePath,
         env: spawnEnv
       });
 
       child.stdout.on('data', (data) => log(data.toString().trim()));
       child.stderr.on('data', (data) => log(`[WARN] ${data.toString().trim()}`));
+      child.on('error', (error) => {
+        log(`[ERROR] ${error.message}`);
+        reject(error);
+      });
       
       child.on('close', (code) => {
         if (code === 0) {

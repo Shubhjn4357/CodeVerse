@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 import { IdxEngine } from '../idx/idx-engine';
 import { HFStorage } from '../hf/storage';
 import { resolveSafeProjectPath } from '../fs/isolation';
+import { ENV_CONFIG } from '../env-config';
 
 /**
  * Lighter process interface for reconnected sessions that don't have a full Node.js ChildProcess object.
@@ -42,13 +43,14 @@ interface WorkspaceRuntimePaths {
     runtimeWorkspacePath: string;
     userDataPath: string;
     metadataPath: string;
+    npmCachePath: string;
 }
 
 const SHORT_WORKSPACE_ID_LENGTH = 8;
 const RUNTIME_ROOT_DIR_NAME = '.codeverse-runtime';
 
 function getWorkspaceRootPath(): string {
-    return process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
+    return ENV_CONFIG.WORKSPACE_ROOT;
 }
 
 function getRuntimeRootPath(): string {
@@ -89,6 +91,7 @@ async function resolveWorkspaceRuntimePaths(config: Pick<WorkspaceConfig, 'id' |
         runtimeWorkspacePath: path.join(/*turbopackIgnore: true*/ runtimeRootPath, shortWorkspaceId),
         userDataPath: path.join(/*turbopackIgnore: true*/ runtimeRootPath, `${shortWorkspaceId}-userdata`),
         metadataPath: path.join(/*turbopackIgnore: true*/ runtimeRootPath, `${shortWorkspaceId}.id`),
+        npmCachePath: path.join(/*turbopackIgnore: true*/ runtimeRootPath, 'npm-cache'),
     };
 }
 
@@ -99,6 +102,7 @@ function ensureRuntimeWorkspacePath(paths: WorkspaceRuntimePaths, log?: (msg: st
 
     fs.mkdirSync(paths.runtimeRootPath, { recursive: true });
     fs.mkdirSync(paths.userDataPath, { recursive: true });
+    fs.mkdirSync(paths.npmCachePath, { recursive: true });
 
     if (fs.existsSync(paths.runtimeWorkspacePath)) {
         try {
@@ -164,6 +168,24 @@ function findAvailablePort(): number {
         port = Math.floor(Math.random() * (9000 - 8100) + 8100);
     }
     return port;
+}
+
+function resolveCodeServerLaunch(): { command: string; args: string[]; label: string } {
+    const overrideBinary = process.env.CODE_SERVER_BIN;
+    if (overrideBinary) {
+        return { command: overrideBinary, args: [], label: overrideBinary };
+    }
+
+    if (process.platform === 'win32') {
+        try {
+            execSync('where code-server.cmd', { stdio: 'ignore' });
+            return { command: 'code-server.cmd', args: [], label: 'code-server' };
+        } catch {
+            return { command: 'npx.cmd', args: ['--yes', 'code-server'], label: 'npx code-server' };
+        }
+    }
+
+    return { command: 'code-server', args: [], label: 'code-server' };
 }
 
 /**
@@ -312,8 +334,9 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
     }
 
         // 5. Spawn code-server
-        const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
-        const args = process.platform === 'win32' ? ['code-server'] : [];
+        const codeServerLaunch = resolveCodeServerLaunch();
+        const shellCommand = codeServerLaunch.command;
+        const args = codeServerLaunch.args;
         
         const baseArgs = [
             '--auth', 'none',
@@ -324,19 +347,29 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
             workspacePath
         ];
 
-        const spawnEnv: NodeJS.ProcessEnv = { ...process.env, HOME: workspacePath };
+        const spawnEnv: NodeJS.ProcessEnv = {
+            ...process.env,
+            HOME: workspacePath,
+            npm_config_cache: runtimePaths.npmCachePath,
+            npm_config_update_notifier: 'false',
+        };
         delete spawnEnv.PORT;
         delete spawnEnv.SERVER_PORT;
 
         const child = spawn(shellCommand, [...args, ...baseArgs], {
             env: spawnEnv,
             cwd: workspacePath,
-            shell: process.platform === 'win32'
+            shell: false
         });
 
-        log(`Spawning VS Code Orchestrator (PID: ${child.pid})...`);
+        log(`Spawning VS Code Orchestrator via ${codeServerLaunch.label} (PID: ${child.pid})...`);
+        let childExited = false;
+        let childFailureReason: string | null = null;
 
-        child.on('error', (err) => log(`[FATAL] IDE binary failure: ${err.message}`));
+        child.on('error', (err) => {
+            childFailureReason = `IDE_BINARY_FAILURE: ${err.message}`;
+            log(`[FATAL] IDE binary failure: ${err.message}`);
+        });
         child.stdout.on('data', (data) => {
             const out = data.toString().trim();
             if (out.includes('listening on')) log(`[IDX:UP] ${out}`);
@@ -349,6 +382,10 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         });
 
         child.on('close', (code, signal) => {
+            childExited = true;
+            if (code !== 0 || signal) {
+                childFailureReason = childFailureReason ?? `IDE_PROCESS_EXIT_${code ?? 'unknown'}${signal ? `_${signal}` : ''}`;
+            }
             log(`[IDE:EXIT] IDE process died with code ${code} (Signal: ${signal})`);
             nativeProcesses.delete(config.id);
         });
@@ -359,6 +396,17 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         // 7. Handshake Loop
         let attempts = 0;
         while (attempts < 60) {
+            if (childExited) {
+                const rawFailureMessage = childFailureReason ?? 'IDE_PROCESS_EXITED_BEFORE_HANDSHAKE';
+                const failureMessage = shellCommand === 'npx'
+                    ? `${rawFailureMessage}. code-server could not be bootstrapped via npx. Install code-server globally or set CODE_SERVER_BIN.`
+                    : rawFailureMessage;
+                log(`[FATAL] IDE bootstrap aborted before handshake: ${failureMessage}`);
+                const errResult = { success: false, error: failureMessage };
+                provisioningBus.emit(`error:${config.id}`, errResult);
+                return errResult;
+            }
+
             try {
                 const res = await fetch(`http://127.0.0.1:${port}`);
                 if (res.ok) {

@@ -1,3 +1,11 @@
+import path from "path";
+
+function getDefaultWorkspaceRoot(): string {
+    return process.platform === "win32"
+        ? path.join(process.cwd(), "workspaces")
+        : "/home/node/w";
+}
+
 /**
  * CodeVerse Environment Configuration & Requirements Manifest.
  * Centralizing all system variables for production-grade reliability.
@@ -6,7 +14,7 @@ export const ENV_CONFIG = {
     // 1. Storage & Persistence
     HF_TOKEN: process.env.HF_TOKEN || process.env.hfToken || process.env.HF_SPACE || process.env.HuggingFaceToken,
     HF_DATASET_ID: process.env.HF_DATASET_ID || process.env.hfDataset || process.env.HF_DATASET,
-    WORKSPACE_ROOT: process.env.WORKSPACE_ROOT || '/home/node/w',
+    WORKSPACE_ROOT: process.env.WORKSPACE_ROOT || getDefaultWorkspaceRoot(),
 
     // 2. Build Acceleration
     CACHIX_CACHE_NAME: process.env.CACHIX_CACHE_NAME || 'code-nix',
@@ -19,8 +27,8 @@ export const ENV_CONFIG = {
     IS_SBC: !!process.env.SPACE_ID,
 
     // 4. Database & Auth
-    AUTH_SECRET: process.env.AUTH_SECRET || process.env.authSecret,
-    TURSO_URL: process.env.TURSO_URL || process.env.turso_url || process.env.database_url || process.env.TURSO_DATABASE_URL || process.env.DB_URL || process.env.turso_database_url,
+    AUTH_SECRET: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || process.env.authSecret,
+    TURSO_URL: process.env.TURSO_URL || process.env.turso_url || process.env.DATABASE_URL || process.env.database_url || process.env.TURSO_DATABASE_URL || process.env.DB_URL || process.env.turso_database_url,
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN || process.env.turso_auth_token || process.env.DB_TOKEN,
     TMPDIR: '/tmp',
     HF_HOME: '/tmp/.cache/huggingface',
@@ -31,10 +39,14 @@ export const ENV_CONFIG = {
  */
 export function validateEnvironment() {
     const missing: string[] = [];
-    if (!ENV_CONFIG.HF_TOKEN) missing.push('HF_TOKEN (Missing Persistence Link)');
-    if (!ENV_CONFIG.HF_DATASET_ID) missing.push('HF_DATASET_ID (Missing Data Segment)');
     if (!ENV_CONFIG.AUTH_SECRET) missing.push('AUTH_SECRET (Security Risk)');
     if (!ENV_CONFIG.TURSO_URL) missing.push('TURSO_URL (Database Missing)');
+
+    // HF persistence is required in deployed Spaces, not for local production testing.
+    if (ENV_CONFIG.SPACE_ID) {
+        if (!ENV_CONFIG.HF_TOKEN) missing.push('HF_TOKEN (Missing Persistence Link)');
+        if (!ENV_CONFIG.HF_DATASET_ID) missing.push('HF_DATASET_ID (Missing Data Segment)');
+    }
 
     // Strategic Dataset Validation
     if (ENV_CONFIG.HF_DATASET_ID && !ENV_CONFIG.HF_DATASET_ID.includes('/')) {

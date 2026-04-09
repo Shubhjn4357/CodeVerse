@@ -22,6 +22,7 @@ const events_1 = require("events");
 const idx_engine_1 = require("../idx/idx-engine");
 const storage_1 = require("../hf/storage");
 const isolation_1 = require("../fs/isolation");
+const env_config_1 = require("../env-config");
 /**
  * Registry for native workspace processes (IDE instances running outside Docker)
  * Map<workspaceId, { pid: number; port: number; process: WorkspaceProcess }>
@@ -40,7 +41,7 @@ exports.pendingProvisioning = new Map();
 const SHORT_WORKSPACE_ID_LENGTH = 8;
 const RUNTIME_ROOT_DIR_NAME = '.codeverse-runtime';
 function getWorkspaceRootPath() {
-    return process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/node/w');
+    return env_config_1.ENV_CONFIG.WORKSPACE_ROOT;
 }
 function getRuntimeRootPath() {
     return path_1.default.join(/*turbopackIgnore: true*/ getWorkspaceRootPath(), RUNTIME_ROOT_DIR_NAME);
@@ -73,6 +74,7 @@ async function resolveWorkspaceRuntimePaths(config) {
         runtimeWorkspacePath: path_1.default.join(/*turbopackIgnore: true*/ runtimeRootPath, shortWorkspaceId),
         userDataPath: path_1.default.join(/*turbopackIgnore: true*/ runtimeRootPath, `${shortWorkspaceId}-userdata`),
         metadataPath: path_1.default.join(/*turbopackIgnore: true*/ runtimeRootPath, `${shortWorkspaceId}.id`),
+        npmCachePath: path_1.default.join(/*turbopackIgnore: true*/ runtimeRootPath, 'npm-cache'),
     };
 }
 function ensureRuntimeWorkspacePath(paths, log) {
@@ -81,6 +83,7 @@ function ensureRuntimeWorkspacePath(paths, log) {
     }
     fs_1.default.mkdirSync(paths.runtimeRootPath, { recursive: true });
     fs_1.default.mkdirSync(paths.userDataPath, { recursive: true });
+    fs_1.default.mkdirSync(paths.npmCachePath, { recursive: true });
     if (fs_1.default.existsSync(paths.runtimeWorkspacePath)) {
         try {
             const existingTargetPath = fs_1.default.realpathSync(paths.runtimeWorkspacePath);
@@ -143,6 +146,22 @@ function findAvailablePort() {
         port = Math.floor(Math.random() * (9000 - 8100) + 8100);
     }
     return port;
+}
+function resolveCodeServerLaunch() {
+    const overrideBinary = process.env.CODE_SERVER_BIN;
+    if (overrideBinary) {
+        return { command: overrideBinary, args: [], label: overrideBinary };
+    }
+    if (process.platform === 'win32') {
+        try {
+            (0, child_process_1.execSync)('where code-server.cmd', { stdio: 'ignore' });
+            return { command: 'code-server.cmd', args: [], label: 'code-server' };
+        }
+        catch (_a) {
+            return { command: 'npx.cmd', args: ['--yes', 'code-server'], label: 'npx code-server' };
+        }
+    }
+    return { command: 'code-server', args: [], label: 'code-server' };
 }
 /**
  * Checks if Docker is available in the current environment.
@@ -255,8 +274,9 @@ async function performProvisioning(config) {
             fs_1.default.writeFileSync(flagPath, new Date().toISOString());
         }
         // 5. Spawn code-server
-        const shellCommand = process.platform === 'win32' ? 'npx' : 'code-server';
-        const args = process.platform === 'win32' ? ['code-server'] : [];
+        const codeServerLaunch = resolveCodeServerLaunch();
+        const shellCommand = codeServerLaunch.command;
+        const args = codeServerLaunch.args;
         const baseArgs = [
             '--auth', 'none',
             '--bind-addr', `127.0.0.1:${port}`,
@@ -265,16 +285,26 @@ async function performProvisioning(config) {
             '--disable-update-check',
             workspacePath
         ];
-        const spawnEnv = { ...process.env, HOME: workspacePath };
+        const spawnEnv = {
+            ...process.env,
+            HOME: workspacePath,
+            npm_config_cache: runtimePaths.npmCachePath,
+            npm_config_update_notifier: 'false',
+        };
         delete spawnEnv.PORT;
         delete spawnEnv.SERVER_PORT;
         const child = (0, child_process_1.spawn)(shellCommand, [...args, ...baseArgs], {
             env: spawnEnv,
             cwd: workspacePath,
-            shell: process.platform === 'win32'
+            shell: false
         });
-        log(`Spawning VS Code Orchestrator (PID: ${child.pid})...`);
-        child.on('error', (err) => log(`[FATAL] IDE binary failure: ${err.message}`));
+        log(`Spawning VS Code Orchestrator via ${codeServerLaunch.label} (PID: ${child.pid})...`);
+        let childExited = false;
+        let childFailureReason = null;
+        child.on('error', (err) => {
+            childFailureReason = `IDE_BINARY_FAILURE: ${err.message}`;
+            log(`[FATAL] IDE binary failure: ${err.message}`);
+        });
         child.stdout.on('data', (data) => {
             const out = data.toString().trim();
             if (out.includes('listening on'))
@@ -288,6 +318,10 @@ async function performProvisioning(config) {
                 log(`[IDE:ERR] ${err}`);
         });
         child.on('close', (code, signal) => {
+            childExited = true;
+            if (code !== 0 || signal) {
+                childFailureReason = childFailureReason !== null && childFailureReason !== void 0 ? childFailureReason : `IDE_PROCESS_EXIT_${code !== null && code !== void 0 ? code : 'unknown'}${signal ? `_${signal}` : ''}`;
+            }
             log(`[IDE:EXIT] IDE process died with code ${code} (Signal: ${signal})`);
             exports.nativeProcesses.delete(config.id);
         });
@@ -296,6 +330,16 @@ async function performProvisioning(config) {
         // 7. Handshake Loop
         let attempts = 0;
         while (attempts < 60) {
+            if (childExited) {
+                const rawFailureMessage = childFailureReason !== null && childFailureReason !== void 0 ? childFailureReason : 'IDE_PROCESS_EXITED_BEFORE_HANDSHAKE';
+                const failureMessage = shellCommand === 'npx'
+                    ? `${rawFailureMessage}. code-server could not be bootstrapped via npx. Install code-server globally or set CODE_SERVER_BIN.`
+                    : rawFailureMessage;
+                log(`[FATAL] IDE bootstrap aborted before handshake: ${failureMessage}`);
+                const errResult = { success: false, error: failureMessage };
+                exports.provisioningBus.emit(`error:${config.id}`, errResult);
+                return errResult;
+            }
             try {
                 const res = await fetch(`http://127.0.0.1:${port}`);
                 if (res.ok) {

@@ -230,9 +230,9 @@ const server = (0, http_1.createServer)((req, res) => {
     }
     // 3. Workspace Proxying
     if (id) {
-        const isRunning = (0, manager_1.isNativeWorkspaceRunning)(id);
+        const isRunning = (0, manager_1.isWorkspaceRunning)(id);
         if (isRunning) {
-            const port = (0, manager_1.getNativeWorkspacePort)(id);
+            const port = (0, manager_1.getWorkspacePort)(id);
             if (port) {
                 prepareWorkspaceProxyRequest(req, id);
                 return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
@@ -318,8 +318,8 @@ server.on("upgrade", (req, socket, head) => {
         });
         return;
     }
-    if (id && (0, manager_1.isNativeWorkspaceRunning)(id)) {
-        const port = (0, manager_1.getNativeWorkspacePort)(id);
+    if (id && (0, manager_1.isWorkspaceRunning)(id)) {
+        const port = (0, manager_1.getWorkspacePort)(id);
         if (!port) {
             socket.destroy();
             return;

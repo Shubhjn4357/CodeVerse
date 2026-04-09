@@ -7,6 +7,7 @@ exports.IdxEngine = void 0;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const child_process_1 = require("child_process");
+const env_config_1 = require("../env-config");
 /**
  * IDX Engine for declarative workspace environments.
  * Refactored for 2026 Asynchronous Execution to prevent Event Loop blocking.
@@ -68,6 +69,10 @@ class IdxEngine {
             return;
         const log = (msg) => { if (onLog)
             onLog(`[IDX:NIX] ${msg}`); };
+        if (!env_config_1.ENV_CONFIG.IDX_NIX_SYNC_ENABLED) {
+            log(`Nix synchronization is disabled by runtime policy. Skipping declarative package sync.`);
+            return;
+        }
         log(`Syncing system packages: ${config.packages.join(', ')}...`);
         const hasNix = await this.hasCommand('nix');
         if (!hasNix) {

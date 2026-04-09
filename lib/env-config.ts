@@ -19,6 +19,9 @@ export const ENV_CONFIG = {
     // 2. Build Acceleration
     CACHIX_CACHE_NAME: process.env.CACHIX_CACHE_NAME || 'code-nix',
     CACHIX_AUTH_TOKEN: process.env.CACHIX_AUTH_TOKEN,
+    IDX_NIX_SYNC_ENABLED: process.env.IDX_NIX_SYNC_ENABLED
+        ? process.env.IDX_NIX_SYNC_ENABLED === 'true'
+        : process.platform !== 'win32',
 
     // 3. Infrastructure State
     NODE_ENV: process.env.NODE_ENV || 'production',
@@ -30,6 +33,12 @@ export const ENV_CONFIG = {
     AUTH_SECRET: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || process.env.authSecret,
     TURSO_URL: process.env.TURSO_URL || process.env.turso_url || process.env.DATABASE_URL || process.env.database_url || process.env.TURSO_DATABASE_URL || process.env.DB_URL || process.env.turso_database_url,
     TURSO_AUTH_TOKEN: process.env.TURSO_AUTH_TOKEN || process.env.turso_auth_token || process.env.DB_TOKEN,
+    CODE_SERVER_NODE_BIN: process.env.CODE_SERVER_NODE_BIN,
+    CODE_SERVER_ENTRY: process.env.CODE_SERVER_ENTRY,
+    DOCKER_SOCKET_PATH: process.env.DOCKER_SOCKET_PATH,
+    DOCKER_PROBE_TIMEOUT_MS: Number.parseInt(process.env.DOCKER_PROBE_TIMEOUT_MS || '4000', 10),
+    WORKSPACE_RUNTIME_PREFERENCE: process.env.WORKSPACE_RUNTIME_PREFERENCE || (process.platform === 'win32' ? 'docker' : 'auto'),
+    DOCKER_WORKSPACE_BASE_IMAGE: process.env.DOCKER_WORKSPACE_BASE_IMAGE || 'codercom/code-server:latest',
     TMPDIR: '/tmp',
     HF_HOME: '/tmp/.cache/huggingface',
 };

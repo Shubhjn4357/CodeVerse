@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Docker from 'dockerode';
-
-const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
+import { resolveDockerClient } from '@/lib/docker/client';
+import { ENV_CONFIG } from '@/lib/env-config';
 
 export async function PATCH(req: NextRequest) {
     try {
@@ -13,6 +12,12 @@ export async function PATCH(req: NextRequest) {
         }
 
         const containerName = `codeverse-workspace-${id}`;
+        const dockerResolution = await resolveDockerClient(ENV_CONFIG.DOCKER_PROBE_TIMEOUT_MS);
+        if (!dockerResolution) {
+            return NextResponse.json({ success: false, error: "Docker daemon is not available" }, { status: 503 });
+        }
+
+        const docker = dockerResolution.docker;
         const container = docker.getContainer(containerName);
 
         const info = await container.inspect();

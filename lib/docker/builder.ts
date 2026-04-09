@@ -1,9 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
-import Docker from 'dockerode';
+import type Docker from 'dockerode';
 import * as tar from 'tar-fs';
-
-const docker = new Docker();
 
 export interface CodeverseConfig {
     env?: Record<string, string>;
@@ -94,7 +92,8 @@ export async function loadWorkspaceConfig(workspacePath: string): Promise<Codeve
 export async function buildWorkspaceImage(
     workspaceId: string,
     workspacePath: string,
-    onLog: (msg: string) => void
+    onLog: (msg: string) => void,
+    docker: Docker
 ): Promise<{ imageName: string, config: CodeverseConfig }> {
 
     onLog("Loading workspace configuration (codeverse.json or dev.nix)...");

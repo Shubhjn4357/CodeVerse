@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { provisioningBus, isNativeWorkspaceRunning, getNativeWorkspacePort, pendingProvisioning, WorkspaceOperationResult } from '@/lib/docker/manager';
+import { provisioningBus, isWorkspaceRunning, getWorkspacePort, pendingProvisioning, WorkspaceOperationResult } from '@/lib/docker/manager';
 import { auth } from '@/auth';
 import { db } from '@/lib/db';
 
@@ -80,10 +80,10 @@ export async function GET(req: NextRequest) {
             cleanup = dispose;
 
             // 3. IMMEDIATE SYNC: If workspace is ALREADY running, send ready and finish
-            if (isNativeWorkspaceRunning(id)) {
+            if (isWorkspaceRunning(id)) {
                 sendEvent('ready', {
                     success: true,
-                    port: getNativeWorkspacePort(id),
+                    port: getWorkspacePort(id),
                 });
                 dispose();
                 controller.close();
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
             if (!pendingProvisioning.has(id)) {
                 timeoutId = setTimeout(() => {
                     try {
-                        if (!pendingProvisioning.has(id) && !isNativeWorkspaceRunning(id)) {
+                        if (!pendingProvisioning.has(id) && !isWorkspaceRunning(id)) {
                            sendEvent('error', { message: "No active provisioning session. Start workspace first." });
                            dispose();
                            controller.close();

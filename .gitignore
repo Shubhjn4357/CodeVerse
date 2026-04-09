@@ -19,6 +19,7 @@
 
 # production
 /build
+/.codeverse-tools/
 
 # misc
 .DS_Store

@@ -1,14 +1,11 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.checkIdleContainers = checkIdleContainers;
 exports.startAutoSleepCron = startAutoSleepCron;
-const dockerode_1 = __importDefault(require("dockerode"));
 const manager_1 = require("../docker/manager");
 const db_1 = require("../db");
-const docker = new dockerode_1.default({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
+const client_1 = require("../docker/client");
+const env_config_1 = require("../env-config");
 // Store previous network RX bytes to calculate delta
 const networkThresholds = new Map();
 async function checkIdleContainers() {
@@ -16,6 +13,11 @@ async function checkIdleContainers() {
     if (!status.available) {
         return;
     }
+    const dockerResolution = await (0, client_1.resolveDockerClient)(env_config_1.ENV_CONFIG.DOCKER_PROBE_TIMEOUT_MS);
+    if (!dockerResolution) {
+        return;
+    }
+    const docker = dockerResolution.docker;
     console.log("[Auto-Sleep] Running idle container check...");
     try {
         const containers = await docker.listContainers({

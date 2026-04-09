@@ -20,7 +20,7 @@ import * as pty from "node-pty";
 import os from "os";
 import { Duplex } from "stream";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
-import { getNativeWorkspacePort, isNativeWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces } from "./lib/docker/manager";
+import { getWorkspacePort, isWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces } from "./lib/docker/manager";
 import { initDb } from "./lib/db/schema";
 import { client as dbClient } from "./lib/db";
 import { HFStorage } from "./lib/hf/storage";
@@ -220,10 +220,10 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 
     // 3. Workspace Proxying
     if (id) {
-        const isRunning = isNativeWorkspaceRunning(id);
+        const isRunning = isWorkspaceRunning(id);
         
         if (isRunning) {
-            const port = getNativeWorkspacePort(id);
+            const port = getWorkspacePort(id);
             if (port) {
                 prepareWorkspaceProxyRequest(req, id);
                 return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
@@ -317,8 +317,8 @@ server.on("upgrade", (req, socket, head) => {
         return;
     }
 
-    if (id && isNativeWorkspaceRunning(id)) {
-        const port = getNativeWorkspacePort(id);
+    if (id && isWorkspaceRunning(id)) {
+        const port = getWorkspacePort(id);
         if (!port) {
             socket.destroy();
             return;

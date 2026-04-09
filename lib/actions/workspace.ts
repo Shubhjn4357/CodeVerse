@@ -6,8 +6,8 @@ import { WorkspaceRecord } from "@/lib/db/schema";
 import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
 import { 
-  getNativeWorkspacePort, 
-  isNativeWorkspaceRunning, 
+  getWorkspacePort, 
+  isWorkspaceRunning, 
   prewarmWorkspace,
   WorkspaceConfig
 } from "@/lib/docker/manager";
@@ -104,7 +104,7 @@ export async function startWorkspace(workspaceId: string): Promise<WorkspaceActi
     // Trigger prewarming / starting via the manager
     await prewarmWorkspace(config);
     
-    const port = getNativeWorkspacePort(workspaceId);
+    const port = getWorkspacePort(workspaceId);
     
     revalidatePath("/");
     return { success: true, data: { port } };
@@ -122,7 +122,7 @@ export async function getWorkspaceStatus(workspaceId: string): Promise<Workspace
     if (!session?.user?.id) return { success: false, error: "Unauthorized" };
 
     try {
-        const isRunning = isNativeWorkspaceRunning(workspaceId);
+        const isRunning = isWorkspaceRunning(workspaceId);
         return { success: true, data: { isRunning } };
     } catch (error: unknown) {
         console.error("[ACTION:ERROR] getWorkspaceStatus failed:", error);

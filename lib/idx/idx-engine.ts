@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
+import { ENV_CONFIG } from '../env-config';
 
 /**
  * Interface representing the .idx/dev.nix configuration.
@@ -77,6 +78,11 @@ export class IdxEngine {
     if (!config.packages || config.packages.length === 0) return;
 
     const log = (msg: string) => { if (onLog) onLog(`[IDX:NIX] ${msg}`); };
+    if (!ENV_CONFIG.IDX_NIX_SYNC_ENABLED) {
+      log(`Nix synchronization is disabled by runtime policy. Skipping declarative package sync.`);
+      return;
+    }
+
     log(`Syncing system packages: ${config.packages.join(', ')}...`);
 
     const hasNix = await this.hasCommand('nix');

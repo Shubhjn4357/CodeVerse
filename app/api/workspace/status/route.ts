@@ -1,4 +1,4 @@
-import { getWorkspaceStatus, getNativeWorkspacePort } from "@/lib/docker/manager";
+import { getWorkspaceStatus, getWorkspacePort } from "@/lib/docker/manager";
 import { auth } from "@/auth";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
     if (!id) return NextResponse.json({ success: false, error: "Missing id" }, { status: 400 });
 
     const status = getWorkspaceStatus(id);
-    const port = getNativeWorkspacePort(id);
+    const port = getWorkspacePort(id);
 
     return NextResponse.json({
         success: true,

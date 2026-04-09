@@ -1,8 +1,7 @@
-import Docker from "dockerode";
 import { stopWorkspaceContainer, isDockerAvailable } from "../docker/manager";
 import { db } from "../db";
-
-const docker = new Docker({ socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' });
+import { resolveDockerClient } from "../docker/client";
+import { ENV_CONFIG } from "../env-config";
 
 // Store previous network RX bytes to calculate delta
 const networkThresholds = new Map<string, number>();
@@ -12,6 +11,14 @@ export async function checkIdleContainers() {
     if (!status.available) {
         return;
     }
+
+    const dockerResolution = await resolveDockerClient(ENV_CONFIG.DOCKER_PROBE_TIMEOUT_MS);
+    if (!dockerResolution) {
+        return;
+    }
+
+    const docker = dockerResolution.docker;
+
     console.log("[Auto-Sleep] Running idle container check...");
     try {
         const containers = await docker.listContainers({

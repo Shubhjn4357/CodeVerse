@@ -1,20 +1,20 @@
 "use server";
 
-import Docker from 'dockerode';
 import { ENV_CONFIG } from '@/lib/env-config';
-
-const docker = new Docker({ 
-    socketPath: process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock' 
-});
+import { resolveDockerClient } from '@/lib/docker/client';
 
 import { isDockerAvailable } from '@/lib/docker/manager';
 
 export async function checkDeviceAvailability(platform: string, workspaceId: string) {
     try {
-        const hasDocker = await isDockerAvailable();
+        const dockerAvailability = await isDockerAvailable();
+        const dockerResolution = dockerAvailability.available
+            ? await resolveDockerClient(ENV_CONFIG.DOCKER_PROBE_TIMEOUT_MS)
+            : null;
+        const docker = dockerResolution?.docker;
 
         if (platform === "android") {
-            if (!hasDocker) {
+            if (!dockerAvailability.available || !docker) {
                 return { available: false, reason: "Android virtualization requires Docker which is not available in this cloud environment." };
             }
             const containerName = `codeverse-android-${workspaceId}`;
@@ -65,6 +65,12 @@ export async function checkDeviceAvailability(platform: string, workspaceId: str
 
 export async function requestEmulatorRestart(platform: string, workspaceId: string) {
     try {
+        const dockerResolution = await resolveDockerClient(ENV_CONFIG.DOCKER_PROBE_TIMEOUT_MS);
+        if (!dockerResolution) {
+            return { success: false, error: "Docker daemon is not available." };
+        }
+
+        const docker = dockerResolution.docker;
         let containerName = "";
         if (platform === "android") containerName = `codeverse-android-${workspaceId}`;
         else if (platform === "web") containerName = `codeverse-workspace-${workspaceId}`;

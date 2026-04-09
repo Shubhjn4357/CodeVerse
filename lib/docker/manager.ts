@@ -1,5 +1,5 @@
 import fs from 'fs';
-import { spawn, ChildProcess, execSync } from 'child_process';
+import { spawn, ChildProcess, execFileSync, execSync } from 'child_process';
 import path from 'path';
 import Docker from 'dockerode';
 import { EventEmitter } from 'events';
@@ -44,6 +44,14 @@ interface WorkspaceRuntimePaths {
     userDataPath: string;
     metadataPath: string;
     npmCachePath: string;
+}
+
+interface CodeServerLaunch {
+    command: string;
+    args: string[];
+    label: string;
+    usesNpx: boolean;
+    useShell: boolean;
 }
 
 const SHORT_WORKSPACE_ID_LENGTH = 8;
@@ -170,22 +178,74 @@ function findAvailablePort(): number {
     return port;
 }
 
-function resolveCodeServerLaunch(): { command: string; args: string[]; label: string } {
-    const overrideBinary = process.env.CODE_SERVER_BIN;
-    if (overrideBinary) {
-        return { command: overrideBinary, args: [], label: overrideBinary };
-    }
+function resolveExecutableOnPath(candidates: string[]): string | null {
+    const locatorCommand = process.platform === 'win32' ? 'where' : 'which';
 
-    if (process.platform === 'win32') {
+    for (const candidate of candidates) {
         try {
-            execSync('where code-server.cmd', { stdio: 'ignore' });
-            return { command: 'code-server.cmd', args: [], label: 'code-server' };
+            const output = execFileSync(locatorCommand, [candidate], {
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+            });
+            const resolvedPath = output
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .find(Boolean);
+            if (resolvedPath) {
+                return resolvedPath;
+            }
         } catch {
-            return { command: 'npx.cmd', args: ['--yes', 'code-server'], label: 'npx code-server' };
+            // Fall through to the next candidate.
         }
     }
 
-    return { command: 'code-server', args: [], label: 'code-server' };
+    return null;
+}
+
+function quoteWindowsCmdArg(value: string): string {
+    if (value.length === 0) {
+        return '""';
+    }
+
+    if (!/[ \t"]/.test(value)) {
+        return value;
+    }
+
+    return `"${value.replace(/"/g, '""')}"`;
+}
+
+function resolveCodeServerLaunch(): CodeServerLaunch {
+    const overrideBinary = process.env.CODE_SERVER_BIN;
+    if (overrideBinary) {
+        const useShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(overrideBinary);
+        return { command: overrideBinary, args: [], label: overrideBinary, usesNpx: false, useShell };
+    }
+
+    if (process.platform === 'win32') {
+        const codeServerBinary = resolveExecutableOnPath(['code-server.exe', 'code-server']);
+        if (codeServerBinary) {
+            return { command: codeServerBinary, args: [], label: 'code-server', usesNpx: false, useShell: false };
+        }
+
+        const npxCliPath = path.join(path.dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npx-cli.js');
+        if (fs.existsSync(npxCliPath)) {
+            return { command: process.execPath, args: [npxCliPath, '--yes', 'code-server'], label: 'node npx-cli.js code-server', usesNpx: true, useShell: false };
+        }
+
+        throw new Error('CODE_SERVER_BIN_NOT_FOUND');
+    }
+
+    const codeServerBinary = resolveExecutableOnPath(['code-server']);
+    if (codeServerBinary) {
+        return { command: codeServerBinary, args: [], label: 'code-server', usesNpx: false, useShell: false };
+    }
+
+    const npxBinary = resolveExecutableOnPath(['npx']);
+    if (npxBinary) {
+        return { command: npxBinary, args: ['--yes', 'code-server'], label: 'npx code-server', usesNpx: true, useShell: false };
+    }
+
+    throw new Error('CODE_SERVER_BIN_NOT_FOUND');
 }
 
 /**
@@ -337,6 +397,13 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         const codeServerLaunch = resolveCodeServerLaunch();
         const shellCommand = codeServerLaunch.command;
         const args = codeServerLaunch.args;
+        const spawnCwd = (() => {
+            try {
+                return fs.realpathSync(workspacePath);
+            } catch {
+                return workspacePath;
+            }
+        })();
         
         const baseArgs = [
             '--auth', 'none',
@@ -356,11 +423,25 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         delete spawnEnv.PORT;
         delete spawnEnv.SERVER_PORT;
 
-        const child = spawn(shellCommand, [...args, ...baseArgs], {
-            env: spawnEnv,
-            cwd: workspacePath,
-            shell: false
-        });
+        const launchArgs = [...args, ...baseArgs];
+        const launchCommand = codeServerLaunch.useShell ? (process.env.ComSpec || 'cmd.exe') : shellCommand;
+        const launchCommandArgs = codeServerLaunch.useShell
+            ? ['/d', '/s', '/c', [quoteWindowsCmdArg(shellCommand), ...launchArgs.map(quoteWindowsCmdArg)].join(' ')]
+            : launchArgs;
+
+        log(`IDE launch prepared. Binary: ${shellCommand} | cwd: ${spawnCwd} | target: ${workspacePath}`);
+
+        let child: ChildProcess;
+        try {
+            child = spawn(launchCommand, launchCommandArgs, {
+                env: spawnEnv,
+                cwd: spawnCwd,
+                shell: false
+            });
+        } catch (error) {
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            throw new Error(`IDE_SPAWN_CONFIGURATION_REJECTED: ${errorMessage}`);
+        }
 
         log(`Spawning VS Code Orchestrator via ${codeServerLaunch.label} (PID: ${child.pid})...`);
         let childExited = false;
@@ -370,13 +451,13 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
             childFailureReason = `IDE_BINARY_FAILURE: ${err.message}`;
             log(`[FATAL] IDE binary failure: ${err.message}`);
         });
-        child.stdout.on('data', (data) => {
+        child.stdout?.on('data', (data) => {
             const out = data.toString().trim();
             if (out.includes('listening on')) log(`[IDX:UP] ${out}`);
             else if (out.length > 0) log(`[IDE:CORE] ${out}`);
         });
 
-        child.stderr.on('data', (data) => {
+        child.stderr?.on('data', (data) => {
             const err = data.toString().trim();
             if (err.length > 0) log(`[IDE:ERR] ${err}`);
         });
@@ -398,7 +479,7 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         while (attempts < 60) {
             if (childExited) {
                 const rawFailureMessage = childFailureReason ?? 'IDE_PROCESS_EXITED_BEFORE_HANDSHAKE';
-                const failureMessage = shellCommand === 'npx'
+                const failureMessage = codeServerLaunch.usesNpx
                     ? `${rawFailureMessage}. code-server could not be bootstrapped via npx. Install code-server globally or set CODE_SERVER_BIN.`
                     : rawFailureMessage;
                 log(`[FATAL] IDE bootstrap aborted before handshake: ${failureMessage}`);
@@ -448,7 +529,7 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         const error = e instanceof Error ? e.message : String(e);
         log(`[FATAL] Provisioning pipeline collapsed: ${error}`);
         nativeProcesses.delete(config.id);
-        const errResult = { success: false, error: "PROVISIONING_FAILED" };
+        const errResult = { success: false, error: `PROVISIONING_FAILED: ${error}` };
         provisioningBus.emit(`error:${config.id}`, errResult);
         return errResult;
     }

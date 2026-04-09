@@ -15,6 +15,18 @@ class HFStorage {
     static get isPersistenceRuntimeEnabled() {
         return Boolean(env_config_1.ENV_CONFIG.SPACE_ID && this.HF_TOKEN && this.HF_DATASET_ID && process.platform !== 'win32');
     }
+    static getPersistenceEntries() {
+        const home = process.env.HOME || '/home/node';
+        const relativeWorkspaceRoot = path_1.default.relative(home, this.WORKSPACE_ROOT).replace(/\\/g, '/');
+        const workspaceDatasetPath = relativeWorkspaceRoot.startsWith('..')
+            ? path_1.default.basename(this.WORKSPACE_ROOT)
+            : relativeWorkspaceRoot;
+        return [
+            { datasetPath: workspaceDatasetPath, localPath: this.WORKSPACE_ROOT },
+            { datasetPath: '.vscode-server', localPath: path_1.default.join(home, '.vscode-server') },
+            { datasetPath: '.config/code-server', localPath: path_1.default.join(home, '.config', 'code-server') },
+        ];
+    }
     /**
      * Internal helper for asynchronous execution with logging.
      */
@@ -25,7 +37,7 @@ class HFStorage {
                 HF_TOKEN: this.HF_TOKEN,
                 HF_HOME: '/tmp/.cache/huggingface',
                 TMPDIR: '/tmp',
-                PATH: `/home/node/.local/bin:/home/node/.nix-profile/bin:/usr/local/bin:/usr/bin:${process.env.PATH}`
+                PATH: `/home/node/.local/bin:/home/node/.nix-profile/bin:/usr/local/bin:/usr/bin:${process.env.PATH}`,
             };
             const child = (0, child_process_1.spawn)('/bin/bash', ['-c', command], {
                 env: spawnEnv
@@ -60,16 +72,15 @@ class HFStorage {
             const tmpDir = '/tmp/hf-sync';
             if (!fs_1.default.existsSync(tmpDir))
                 fs_1.default.mkdirSync(tmpDir, { recursive: true });
-            // 🟢 DELTA SYNCING: Only sync the specific workspace and IDE state directories
             const home = process.env.HOME || '/home/node';
-            const persistDirs = ['w', '.vscode-server', '.config/code-server'];
-            for (const dir of persistDirs) {
-                const localPath = path_1.default.join(home, dir);
-                if (!fs_1.default.existsSync(localPath))
-                    fs_1.default.mkdirSync(localPath, { recursive: true });
-                const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} --local-dir ${localPath} --include "${dir}/*" --token ${this.HF_TOKEN}) || (hf download ${this.HF_DATASET_ID} --local-dir ${localPath} --include "${dir}/*" --token ${this.HF_TOKEN})`;
-                onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Restoring ${dir} from differential profile...`);
-                await this.execAsync(cmd, onLog).catch(() => { }); // Continue if one dir fails
+            const persistenceEntries = this.getPersistenceEntries();
+            for (const entry of persistenceEntries) {
+                if (!fs_1.default.existsSync(entry.localPath)) {
+                    fs_1.default.mkdirSync(entry.localPath, { recursive: true });
+                }
+                const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} --local-dir ${home} --include "${entry.datasetPath}/*" --token ${this.HF_TOKEN}) || (hf download ${this.HF_DATASET_ID} --local-dir ${home} --include "${entry.datasetPath}/*" --token ${this.HF_TOKEN})`;
+                onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Restoring ${entry.datasetPath} from differential profile...`);
+                await this.execAsync(cmd, onLog).catch(() => { });
             }
             onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Profile restoration complete.`);
         }
@@ -86,15 +97,13 @@ class HFStorage {
             return;
         try {
             onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Saving persistent profile to '${this.HF_DATASET_ID}'...`);
-            const home = process.env.HOME || '/home/node';
-            const persistDirs = ['w', '.vscode-server', '.config/code-server'];
-            for (const dir of persistDirs) {
-                const localPath = path_1.default.join(home, dir);
-                if (!fs_1.default.existsSync(localPath))
+            const persistenceEntries = this.getPersistenceEntries();
+            for (const entry of persistenceEntries) {
+                if (!fs_1.default.existsSync(entry.localPath))
                     continue;
-                const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${localPath} ${dir} --token ${this.HF_TOKEN} --message "CodeVerse Sync [${dir}]: ${new Date().toISOString()}" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*" --exclude ".cache/*") || (hf upload ${this.HF_DATASET_ID} ${localPath} ${dir} --token ${this.HF_TOKEN})`;
-                onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Performing differential backup of ${dir}...`);
-                await this.execAsync(cmd, onLog).catch(err => onLog === null || onLog === void 0 ? void 0 : onLog(`[WARN] Sync failed for ${dir}: ${err.message}`));
+                const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${entry.localPath} ${entry.datasetPath} --token ${this.HF_TOKEN} --message "CodeVerse Sync [${entry.datasetPath}]: ${new Date().toISOString()}" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*" --exclude ".cache/*") || (hf upload ${this.HF_DATASET_ID} ${entry.localPath} ${entry.datasetPath} --token ${this.HF_TOKEN})`;
+                onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Performing differential backup of ${entry.datasetPath}...`);
+                await this.execAsync(cmd, onLog).catch((err) => onLog === null || onLog === void 0 ? void 0 : onLog(`[WARN] Sync failed for ${entry.datasetPath}: ${err.message}`));
             }
             onLog === null || onLog === void 0 ? void 0 : onLog(`[HF:STORAGE] Profile backup successful.`);
         }

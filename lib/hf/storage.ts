@@ -16,17 +16,31 @@ export class HFStorage {
         return Boolean(ENV_CONFIG.SPACE_ID && this.HF_TOKEN && this.HF_DATASET_ID && process.platform !== 'win32');
     }
 
+    private static getPersistenceEntries(): Array<{ datasetPath: string; localPath: string }> {
+        const home = process.env.HOME || '/home/node';
+        const relativeWorkspaceRoot = path.relative(home, this.WORKSPACE_ROOT).replace(/\\/g, '/');
+        const workspaceDatasetPath = relativeWorkspaceRoot.startsWith('..')
+            ? path.basename(this.WORKSPACE_ROOT)
+            : relativeWorkspaceRoot;
+
+        return [
+            { datasetPath: workspaceDatasetPath, localPath: this.WORKSPACE_ROOT },
+            { datasetPath: '.vscode-server', localPath: path.join(home, '.vscode-server') },
+            { datasetPath: '.config/code-server', localPath: path.join(home, '.config', 'code-server') },
+        ];
+    }
+
     /**
      * Internal helper for asynchronous execution with logging.
      */
     private static async execAsync(command: string, onLog?: (msg: string) => void): Promise<void> {
         return new Promise((resolve, reject) => {
-            const spawnEnv = { 
-                ...process.env, 
+            const spawnEnv = {
+                ...process.env,
                 HF_TOKEN: this.HF_TOKEN,
                 HF_HOME: '/tmp/.cache/huggingface',
                 TMPDIR: '/tmp',
-                PATH: `/home/node/.local/bin:/home/node/.nix-profile/bin:/usr/local/bin:/usr/bin:${process.env.PATH}` 
+                PATH: `/home/node/.local/bin:/home/node/.nix-profile/bin:/usr/local/bin:/usr/bin:${process.env.PATH}`,
             };
             const child = spawn('/bin/bash', ['-c', command], {
                 env: spawnEnv
@@ -63,19 +77,20 @@ export class HFStorage {
             const tmpDir = '/tmp/hf-sync';
             if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
 
-        // 🟢 DELTA SYNCING: Only sync the specific workspace and IDE state directories
-        const home = process.env.HOME || '/home/node';
-        const persistDirs = ['w', '.vscode-server', '.config/code-server'];
-        
-        for (const dir of persistDirs) {
-            const localPath = path.join(home, dir);
-            if (!fs.existsSync(localPath)) fs.mkdirSync(localPath, { recursive: true });
-            
-            const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} --local-dir ${localPath} --include "${dir}/*" --token ${this.HF_TOKEN}) || (hf download ${this.HF_DATASET_ID} --local-dir ${localPath} --include "${dir}/*" --token ${this.HF_TOKEN})`;
-            onLog?.(`[HF:STORAGE] Restoring ${dir} from differential profile...`);
-            await this.execAsync(cmd, onLog).catch(() => {}); // Continue if one dir fails
-        }
-        onLog?.(`[HF:STORAGE] Profile restoration complete.`);
+            const home = process.env.HOME || '/home/node';
+            const persistenceEntries = this.getPersistenceEntries();
+
+            for (const entry of persistenceEntries) {
+                if (!fs.existsSync(entry.localPath)) {
+                    fs.mkdirSync(entry.localPath, { recursive: true });
+                }
+
+                const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli download ${this.HF_DATASET_ID} --local-dir ${home} --include "${entry.datasetPath}/*" --token ${this.HF_TOKEN}) || (hf download ${this.HF_DATASET_ID} --local-dir ${home} --include "${entry.datasetPath}/*" --token ${this.HF_TOKEN})`;
+                onLog?.(`[HF:STORAGE] Restoring ${entry.datasetPath} from differential profile...`);
+                await this.execAsync(cmd, onLog).catch(() => {});
+            }
+
+            onLog?.(`[HF:STORAGE] Profile restoration complete.`);
         } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : String(e);
             onLog?.(`[ERROR] Profile restoration failed: ${errorMessage}`);
@@ -90,16 +105,14 @@ export class HFStorage {
 
         try {
             onLog?.(`[HF:STORAGE] Saving persistent profile to '${this.HF_DATASET_ID}'...`);
-            const home = process.env.HOME || '/home/node';
-            const persistDirs = ['w', '.vscode-server', '.config/code-server'];
+            const persistenceEntries = this.getPersistenceEntries();
 
-            for (const dir of persistDirs) {
-                const localPath = path.join(home, dir);
-                if (!fs.existsSync(localPath)) continue;
+            for (const entry of persistenceEntries) {
+                if (!fs.existsSync(entry.localPath)) continue;
 
-                const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${localPath} ${dir} --token ${this.HF_TOKEN} --message "CodeVerse Sync [${dir}]: ${new Date().toISOString()}" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*" --exclude ".cache/*") || (hf upload ${this.HF_DATASET_ID} ${localPath} ${dir} --token ${this.HF_TOKEN})`;
-                onLog?.(`[HF:STORAGE] Performing differential backup of ${dir}...`);
-                await this.execAsync(cmd, onLog).catch(err => onLog?.(`[WARN] Sync failed for ${dir}: ${err.message}`));
+                const cmd = `(command -v huggingface-cli >/dev/null && huggingface-cli upload ${this.HF_DATASET_ID} ${entry.localPath} ${entry.datasetPath} --token ${this.HF_TOKEN} --message "CodeVerse Sync [${entry.datasetPath}]: ${new Date().toISOString()}" --exclude "node_modules/*" --exclude ".nix/*" --exclude ".direnv/*" --exclude ".cache/*") || (hf upload ${this.HF_DATASET_ID} ${entry.localPath} ${entry.datasetPath} --token ${this.HF_TOKEN})`;
+                onLog?.(`[HF:STORAGE] Performing differential backup of ${entry.datasetPath}...`);
+                await this.execAsync(cmd, onLog).catch((err: Error) => onLog?.(`[WARN] Sync failed for ${entry.datasetPath}: ${err.message}`));
             }
             onLog?.(`[HF:STORAGE] Profile backup successful.`);
         } catch (e: unknown) {
@@ -115,7 +128,7 @@ export class HFStorage {
     static startAutoSave(intervalMs: number = 300000) {
         if (this.autoSaveStarted || !this.isPersistenceRuntimeEnabled) return;
         this.autoSaveStarted = true;
-        
+
         console.log(`[HF:STORAGE] Persistence heartbeat initialized (Interval: ${intervalMs}ms)`);
         setInterval(async () => {
             await this.syncToDataset((msg) => console.log(msg)).catch(() => {});

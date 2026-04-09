@@ -3,14 +3,9 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Activity, Cpu, HardDrive, Zap } from 'lucide-react';
+import type { SystemVitalsResponse } from '@/lib/system/vitals';
 
-interface VitalsData {
-    rss: number;
-    heapUsed: number;
-    heapTotal: number;
-    loadAvg: number[];
-    uptime: number;
-}
+type VitalsData = SystemVitalsResponse['vitals'];
 
 /**
  * Premium Infrastructure Vitals Monitor (2026 Studio Edition)
@@ -21,21 +16,34 @@ export const DashboardVitals: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        let isDisposed = false;
+
         const fetchVitals = async () => {
             try {
-                const res = await fetch('/api/stats');
-                if (res.ok) {
-                    const data = await res.json();
-                    setVitals(data);
+                const res = await fetch('/api/system/vitals', { cache: 'no-store' });
+                if (!res.ok) {
+                    throw new Error(`Vitals request failed with status ${res.status}`);
                 }
-            } catch {
-                setError("Vitals Link Offline");
+
+                const data = await res.json() as SystemVitalsResponse;
+                if (!isDisposed) {
+                    setVitals(data.vitals);
+                    setError(null);
+                }
+            } catch (error) {
+                if (!isDisposed) {
+                    setError(error instanceof Error ? error.message : 'Vitals Link Offline');
+                }
             }
         };
 
-        fetchVitals();
+        void fetchVitals();
         const interval = setInterval(fetchVitals, 5000);
-        return () => clearInterval(interval);
+
+        return () => {
+            isDisposed = true;
+            clearInterval(interval);
+        };
     }, []);
 
     const formatBytes = (bytes: number) => {

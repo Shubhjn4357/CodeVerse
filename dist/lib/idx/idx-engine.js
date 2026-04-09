@@ -13,10 +13,10 @@ const child_process_1 = require("child_process");
  */
 class IdxEngine {
     static async hasCommand(command) {
-        const probeCommand = process.platform === 'win32' ? 'where' : 'command';
-        const probeArgs = process.platform === 'win32' ? [command] : ['-v', command];
+        const probeCommand = process.platform === 'win32' ? 'where' : 'which';
+        const probeArgs = [command];
         return await new Promise((resolve) => {
-            const child = (0, child_process_1.spawn)(probeCommand, probeArgs, { shell: process.platform !== 'win32' });
+            const child = (0, child_process_1.spawn)(probeCommand, probeArgs, { shell: false });
             child.on('close', (code) => resolve(code === 0));
             child.on('error', () => resolve(false));
         });

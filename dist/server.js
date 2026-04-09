@@ -65,8 +65,8 @@ const constants_1 = require("./constants");
 /**
  * PRODUCTION HARDENING (April 2026): Force writable temp paths for HF Spaces.
  */
-process.env.TMPDIR = constants_1.INFRA_CONFIG.TMPDIR;
-process.env.HF_HOME = constants_1.INFRA_CONFIG.HF_HOME;
+process.env.TMPDIR = env_config_1.ENV_CONFIG.TMPDIR;
+process.env.HF_HOME = env_config_1.ENV_CONFIG.HF_HOME;
 if (!process.env.HOME)
     process.env.HOME = '/home/node';
 const dev = process.env.NODE_ENV !== "production";
@@ -355,7 +355,7 @@ io.on("connection", (socket) => {
         shell = pty.spawn(process.env.SHELL || (os_1.default.platform() === "win32" ? "powershell.exe" : "bash"), [], {
             cols: cols || 80,
             rows: rows || 24,
-            cwd: constants_1.INFRA_CONFIG.WORKSPACE_ROOT,
+            cwd: env_config_1.ENV_CONFIG.WORKSPACE_ROOT,
             env: process.env,
         });
         shell.onData((data) => socket.emit("terminal:data", data));

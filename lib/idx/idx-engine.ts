@@ -17,11 +17,11 @@ export interface IdxConfig {
  */
 export class IdxEngine {
   private static async hasCommand(command: string): Promise<boolean> {
-    const probeCommand = process.platform === 'win32' ? 'where' : 'command';
-    const probeArgs = process.platform === 'win32' ? [command] : ['-v', command];
+    const probeCommand = process.platform === 'win32' ? 'where' : 'which';
+    const probeArgs = [command];
 
     return await new Promise<boolean>((resolve) => {
-      const child = spawn(probeCommand, probeArgs, { shell: process.platform !== 'win32' });
+      const child = spawn(probeCommand, probeArgs, { shell: false });
       child.on('close', (code) => resolve(code === 0));
       child.on('error', () => resolve(false));
     });

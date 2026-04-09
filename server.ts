@@ -24,15 +24,15 @@ import { getNativeWorkspacePort, isNativeWorkspaceRunning, prewarmWorkspace, rec
 import { initDb } from "./lib/db/schema";
 import { client as dbClient } from "./lib/db";
 import { HFStorage } from "./lib/hf/storage";
-import { validateEnvironment } from "./lib/env-config";
+import { ENV_CONFIG, validateEnvironment } from "./lib/env-config";
 import httpProxy from "http-proxy";
 import { APP_CONFIG, INFRA_CONFIG, UI_STRINGS } from "./constants";
 
 /**
  * PRODUCTION HARDENING (April 2026): Force writable temp paths for HF Spaces.
  */
-process.env.TMPDIR = INFRA_CONFIG.TMPDIR;
-process.env.HF_HOME = INFRA_CONFIG.HF_HOME;
+process.env.TMPDIR = ENV_CONFIG.TMPDIR;
+process.env.HF_HOME = ENV_CONFIG.HF_HOME;
 if (!process.env.HOME) process.env.HOME = '/home/node';
 
 const dev = process.env.NODE_ENV !== "production";
@@ -358,7 +358,7 @@ io.on("connection", (socket) => {
         shell = pty.spawn(process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash"), [], {
             cols: cols || 80,
             rows: rows || 24,
-            cwd: INFRA_CONFIG.WORKSPACE_ROOT,
+            cwd: ENV_CONFIG.WORKSPACE_ROOT,
             env: process.env as Record<string, string>,
         });
         shell.onData((data: string) => socket.emit("terminal:data", data));

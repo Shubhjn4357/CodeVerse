@@ -89,10 +89,20 @@ export default function BootSequenceClient() {
                     });
 
                     eventSource.addEventListener("error", (event) => {
+                        const messageEvent = event as MessageEvent;
+                        if (!messageEvent.data) {
+                            console.warn("Retrying SSE via IDX-Bus...");
+                            return;
+                        }
+
                         try {
-                            const data = (event as MessageEvent).data;
-                            const errData = data ? JSON.parse(data) : {};
+                            const errData = JSON.parse(messageEvent.data) as { message?: string };
                             addLog(`[IDX:CRT] ${errData.message || "Environment connection broken."}`);
+                            setStatus("error");
+                            if (eventSourceRef.current) {
+                                eventSourceRef.current.close();
+                                eventSourceRef.current = null;
+                            }
                         } catch {
                             console.warn("Retrying SSE via IDX-Bus...");
                         }

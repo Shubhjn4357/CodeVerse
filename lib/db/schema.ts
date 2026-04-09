@@ -1,4 +1,4 @@
-import { type Client, type ResultSet } from "@libsql/client";
+import { type Client } from "@libsql/client";
 
 /**
  * 📊 CodeVerse Native Schema

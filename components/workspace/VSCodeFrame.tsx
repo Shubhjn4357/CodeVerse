@@ -15,10 +15,20 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
     const [appetizeUrl, setAppetizeUrl] = useState<string | null>(null);
     const [buildLogs, setBuildLogs] = useState<string[]>([]);
 
-    const emulator = useEmulator("android");
+    const {
+        isOpen,
+        platform,
+        refreshKey,
+        isLoading,
+        setIsOpen,
+        toggleOpen,
+        changePlatform,
+        refreshIframe,
+    } = useEmulator("android");
 
     useEffect(() => {
         let isMounted = true;
+        let events: EventSource | null = null;
 
         const checkStatus = async () => {
             try {
@@ -38,7 +48,7 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
             const isReady = await checkStatus();
             if (isReady || !isMounted) return;
 
-            const events = new EventSource(`/api/workspace/stream?id=${workspaceId}&withAndroid=true`);
+            events = new EventSource(`/api/workspace/stream?id=${workspaceId}&withAndroid=true`);
 
             const handleLog = (e: Event) => {
                 if (!isMounted) return;
@@ -59,8 +69,8 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                     if (data.success) {
                         if (data.appetizeUrl) setAppetizeUrl(data.appetizeUrl);
                         if (data.androidPort) {
-                            setAndroidPort(data.androidPort);
-                            emulator.setIsOpen(true);
+                            setAndroidPort(String(data.androidPort));
+                            setIsOpen(true);
                         }
                         setStatus("ready"); // Instant ready instead of 1.5s delay
                     } else {
@@ -69,29 +79,32 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                 } catch (e: unknown) {
                     console.error(`[WATCHDOG:ERR] ${e instanceof Error ? e.message : String(e)}`);
                 }
-                events.close();
+                if (events) {
+                    events.close();
+                }
             };
 
             const handleError = () => {
                 if (isMounted) setStatus("error");
-                events.close();
+                if (events) {
+                    events.close();
+                }
             };
 
             events.addEventListener("log", handleLog);
             events.addEventListener("ready", handleReady);
             events.addEventListener("error", handleError);
-
-            return () => {
-                events.removeEventListener("log", handleLog);
-                events.removeEventListener("ready", handleReady);
-                events.removeEventListener("error", handleError);
-                events.close();
-            };
         };
 
-        init();
-        return () => { isMounted = false; };
-    }, [workspaceId, emulator]);
+        void init();
+        return () => {
+            isMounted = false;
+            if (events) {
+                events.close();
+                events = null;
+            }
+        };
+    }, [workspaceId, setIsOpen]);
 
     if (status === "loading") {
         return (
@@ -145,11 +158,11 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
         );
     }
 
-    const targetUrl = `/workspace/${workspaceId}/?folder=/home/coder/project`;
+    const targetUrl = `/workspace/${encodeURIComponent(workspaceId)}/`;
 
     return (
         <div className="w-full h-full flex overflow-hidden bg-(--bg)">
-            <div className={`relative h-full transition-all duration-500 ease-in-out ${emulator.isOpen ? 'w-[60%]' : 'w-full'}`}>
+            <div className={`relative h-full transition-all duration-500 ease-in-out ${isOpen ? 'w-[60%]' : 'w-full'}`}>
                 <iframe
                     src={targetUrl}
                     className="w-full h-full border-0 bg-(--bg)"
@@ -157,9 +170,9 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
                     title="CodeVerse Remote Engine"
                 />
 
-                {!emulator.isOpen && (
+                {!isOpen && (
                     <button
-                        onClick={emulator.toggleOpen}
+                        onClick={toggleOpen}
                         className="absolute bottom-6 right-6 p-4 bg-(--accent) text-white rounded-full shadow-2xl hover:opacity-90 hover:scale-110 active:scale-95 transition-all z-50 flex items-center justify-center border border-white/20"
                         title="Open Built-in Emulators"
                     >
@@ -169,15 +182,15 @@ export function VSCodeFrame({ workspaceId }: VSCodeFrameProps) {
             </div>
 
             {/* Emulator Side Panel */}
-            {emulator.isOpen && (
+            {isOpen && (
                 <div className="w-[40%] h-full flex flex-col min-w-[360px] border-l border-(--border-subtle) bg-(--bg-2) animate-in slide-in-from-right duration-300">
                     <EmulatorPane
-                        platform={emulator.platform}
-                        setPlatform={emulator.changePlatform}
-                        refreshKey={emulator.refreshKey}
-                        isLoading={emulator.isLoading}
-                        onRefresh={emulator.refreshIframe}
-                        onClose={() => emulator.setIsOpen(false)}
+                        platform={platform}
+                        setPlatform={changePlatform}
+                        refreshKey={refreshKey}
+                        isLoading={isLoading}
+                        onRefresh={refreshIframe}
+                        onClose={() => setIsOpen(false)}
                         androidPort={androidPort}
                         appetizeUrl={appetizeUrl}
                         workspaceId={workspaceId}

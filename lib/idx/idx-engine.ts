@@ -130,7 +130,7 @@ export class IdxEngine {
                 log(`Environment already synchronized. Skipping profile update.`);
                 return;
             }
-        } catch (e) {
+        } catch {
             log(`[WARN] Manifest corruption detected. Forcing re-sync.`);
         }
     }

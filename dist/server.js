@@ -85,6 +85,27 @@ const proxy = http_proxy_1.default.createProxyServer({
     timeout: 30000,
     proxyTimeout: 30000
 });
+function getWorkspaceRequestContext(req) {
+    var _a;
+    const host = req.headers.host || 'localhost';
+    const fullUrl = new URL(req.url || '/', `http://${host}`);
+    const pathname = fullUrl.pathname;
+    const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
+    const id = workspaceHostMatch ? workspaceHostMatch[1] : (pathname.startsWith('/workspace/') ? (_a = pathname.split('/')[2]) !== null && _a !== void 0 ? _a : null : null);
+    return { host, pathname, id };
+}
+function prepareWorkspaceProxyRequest(req, id) {
+    var _a;
+    req.headers['x-codeverse-id'] = id;
+    req.headers['x-codeverse-type'] = 'workspace';
+    const prefix = `/workspace/${id}`;
+    if ((_a = req.url) === null || _a === void 0 ? void 0 : _a.startsWith(prefix)) {
+        req.url = req.url.substring(prefix.length);
+        if (!req.url.startsWith('/')) {
+            req.url = `/${req.url}`;
+        }
+    }
+}
 function renderProxyError(res, error, id) {
     res.writeHead(502, { 'Content-Type': 'text/html' });
     res.end(`
@@ -138,6 +159,14 @@ proxy.on("proxyReq", (proxyReq, req) => {
         proxyReq.setHeader('x-codeverse-type', type);
     }
 });
+proxy.on("proxyReqWs", (proxyReq, req) => {
+    const id = req.headers['x-codeverse-id'];
+    const type = req.headers['x-codeverse-type'];
+    if (id && type) {
+        proxyReq.setHeader('x-codeverse-id', id);
+        proxyReq.setHeader('x-codeverse-type', type);
+    }
+});
 proxy.on("proxyRes", (proxyRes, req) => {
     const id = req.headers['x-codeverse-id'];
     const type = req.headers['x-codeverse-type'];
@@ -157,10 +186,7 @@ let envStatus = { valid: true, missing: [] };
  *Autoritative Entrypoint: We initialize the HTTP server immediately to satisfy HF Spaces health checks.
  */
 const server = (0, http_1.createServer)((req, res) => {
-    var _a;
-    const host = req.headers.host || "localhost";
-    const fullUrl = new URL(req.url || "/", `http://${host}`);
-    const { pathname } = fullUrl;
+    const { pathname, id } = getWorkspaceRequestContext(req);
     // 1. Initializing State
     if (!isAppReady && !pathname.startsWith("/_next/static") && pathname !== "/favicon.ico") {
         res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -202,21 +228,14 @@ const server = (0, http_1.createServer)((req, res) => {
         `);
     }
     // 3. Workspace Proxying
-    const workspaceHostMatch = host.match(/^workspace-([a-zA-Z0-9-]+)\./);
-    const id = workspaceHostMatch ? workspaceHostMatch[1] : ((pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/workspace/")) ? pathname.split("/")[2] : null);
     if (id) {
         const isRunning = (0, manager_1.isNativeWorkspaceRunning)(id);
         if (isRunning) {
-            const port = (0, manager_1.getNativeWorkspacePort)(id) || 8080;
-            req.headers['x-codeverse-id'] = id;
-            req.headers['x-codeverse-type'] = 'workspace';
-            const prefix = `/workspace/${id}`;
-            if ((_a = req.url) === null || _a === void 0 ? void 0 : _a.startsWith(prefix)) {
-                req.url = req.url.substring(prefix.length);
-                if (!req.url.startsWith("/"))
-                    req.url = "/" + req.url;
+            const port = (0, manager_1.getNativeWorkspacePort)(id);
+            if (port) {
+                prepareWorkspaceProxyRequest(req, id);
+                return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
             }
-            return proxy.web(req, res, { target: `http://127.0.0.1:${port}`, changeOrigin: true });
         }
         else if (!(pathname === null || pathname === void 0 ? void 0 : pathname.startsWith("/api/"))) {
             // 🚑 WORKSPACE OFFLINE OR BOOTING: Detect if it's truly gone or just waking up
@@ -289,12 +308,24 @@ server.listen(PORT, HOST, () => {
 })();
 // Terminal and Collaboration Handlers
 server.on("upgrade", (req, socket, head) => {
-    const { pathname } = new URL(req.url || "/", `http://${req.headers.host}`);
+    const { pathname, id } = getWorkspaceRequestContext(req);
     if (pathname === "/api/collab") {
         shoket.handleUpgrade(req, socket, head, (ws) => {
             shoket.emit("connection", ws, req);
         });
+        return;
     }
+    if (id && (0, manager_1.isNativeWorkspaceRunning)(id)) {
+        const port = (0, manager_1.getNativeWorkspacePort)(id);
+        if (!port) {
+            socket.destroy();
+            return;
+        }
+        prepareWorkspaceProxyRequest(req, id);
+        proxy.ws(req, socket, head, { target: `ws://127.0.0.1:${port}`, changeOrigin: true });
+        return;
+    }
+    socket.destroy();
 });
 shoket.on("connection", (conn, request) => {
     const { doc } = getOrCreateDoc(new URL(request.url || "/", "http://l").searchParams.get('doc') || "default");

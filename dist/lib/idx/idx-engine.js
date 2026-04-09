@@ -120,7 +120,7 @@ class IdxEngine {
                     return;
                 }
             }
-            catch (e) {
+            catch (_c) {
                 log(`[WARN] Manifest corruption detected. Forcing re-sync.`);
             }
         }

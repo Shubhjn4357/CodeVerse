@@ -38,6 +38,12 @@ interface ConfirmDialogState {
     onConfirm: () => void;
 }
 
+interface CreatedProject {
+    workspaceId: string;
+    projectPath: string;
+    projectName: string;
+}
+
 export default function Dashboard() {
     const { data: session } = useSession();
     const [projects, setProjects] = useState<Project[]>([]);
@@ -48,6 +54,24 @@ export default function Dashboard() {
     const [confirmDialog, setConfirmDialog] = useState<ConfirmDialogState>({
         open: false, title: "", message: "", onConfirm: () => { }
     });
+    const prewarmedWorkspaceIdRef = useRef<string | null>(null);
+
+    const checkContainerStatuses = useCallback(async () => {
+        try {
+            const res = await fetch("/api/workspace?action=statusAll");
+            if (!res.ok) {
+                throw new Error("Workspace status request failed.");
+            }
+
+            const { statuses } = await res.json() as { statuses: Record<string, string> };
+            setProjects((prev) => prev.map((project) => ({
+                ...project,
+                containerStatus: statuses[project.id] === "running" ? "running" : "stopped"
+            })));
+        } catch {
+            setProjects((prev) => prev.map((project) => ({ ...project, containerStatus: "stopped" })));
+        }
+    }, []);
 
     const fetchProjects = useCallback(async () => {
         try {
@@ -59,41 +83,32 @@ export default function Dashboard() {
             setProjects(mapped);
 
             // Kickoff async status checks for Docker containers
-            checkContainerStatuses();
+            void checkContainerStatuses();
         } catch {
             setProjects([]);
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [checkContainerStatuses]);
+
     useEffect(() => {
-        fetchProjects();
-        
-        // PREDICTIVE HYDRATION: Pre-warm the largest or most recent project
-        if (projects.length > 0) {
-            const latest = projects[0];
-            fetch("/api/workspace", {
-                method: "POST",
-                body: JSON.stringify({ action: "prewarm", id: latest.id })
-            }).catch(console.error);
-        }
-    }, [fetchProjects, projects]);
+        void fetchProjects();
+    }, [fetchProjects]);
 
-
-    const checkContainerStatuses = async () => {
-        try {
-            const res = await fetch("/api/workspace?action=statusAll");
-            if (res.ok) {
-                const { statuses } = await res.json();
-                setProjects(prev => prev.map(p => ({
-                    ...p,
-                    containerStatus: statuses[p.id] === 'running' ? 'running' : 'stopped'
-                })));
-            }
-        } catch {
-            setProjects(prev => prev.map(p => ({ ...p, containerStatus: 'stopped' })));
+    useEffect(() => {
+        const latestProject = projects[0];
+        if (!latestProject || prewarmedWorkspaceIdRef.current === latestProject.id) {
+            return;
         }
-    }
+
+        prewarmedWorkspaceIdRef.current = latestProject.id;
+
+        void fetch("/api/workspace", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "prewarm", id: latestProject.id })
+        }).catch(console.error);
+    }, [projects]);
 
     const stopContainer = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -106,9 +121,9 @@ export default function Dashboard() {
             setProjects(prev => prev.map(p => p.id === id ? { ...p, containerStatus: 'stopped' } : p));
         } catch (error) {
             console.error("Stop failed", error);
-            checkContainerStatuses(); // Revert status visually
+            void checkContainerStatuses(); // Revert status visually
         }
-    }
+    };
 
     const filtered = projects.filter((p) => {
         const matchesQuery = p.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -161,9 +176,13 @@ export default function Dashboard() {
         });
     };
 
-    const openProject = (project: Project) => {
-        window.location.href = `/dashboard/booting?id=${encodeURIComponent(project.id)}`;
-    };
+    const openProjectById = useCallback((workspaceId: string) => {
+        window.location.href = `/dashboard/booting?id=${encodeURIComponent(workspaceId)}`;
+    }, []);
+
+    const openProject = useCallback((project: Pick<Project, "id">) => {
+        openProjectById(project.id);
+    }, [openProjectById]);
 
     return (
         <div className="h-full bg-(--bg) flex flex-col overflow-hidden">
@@ -471,7 +490,11 @@ export default function Dashboard() {
                 {showCreateModal && (
                     <CreateProjectModal
                         onClose={() => setShowCreateModal(false)}
-                        onCreated={() => { setShowCreateModal(false); fetchProjects(); }}
+                        onCreated={(project) => {
+                            setShowCreateModal(false);
+                            void fetchProjects();
+                            openProjectById(project.workspaceId);
+                        }}
                     />
                 )}
             </AnimatePresence>
@@ -559,7 +582,7 @@ function CreateProjectModal({
     onCreated,
 }: {
     onClose: () => void;
-    onCreated: (projectPath: string) => void;
+    onCreated: (project: CreatedProject) => void;
 }) {
     const [step, setStep] = useState<Step>("source");
     const [source, setSource] = useState<Source>("git");
@@ -569,7 +592,7 @@ function CreateProjectModal({
     const [pm, setPm] = useState<PackageManager>("npm");
     const [logs, setLogs] = useState<string[]>([]);
     const [status, setStatus] = useState<"idle" | "running" | "done" | "error">("idle");
-    const [projectPath, setProjectPath] = useState("");
+    const [createdProject, setCreatedProject] = useState<CreatedProject | null>(null);
     const logRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -585,6 +608,7 @@ function CreateProjectModal({
         setStep("installing");
         setStatus("running");
         setLogs([]);
+        setCreatedProject(null);
 
         const action = source === "git" ? "clone" : "scaffold";
         const body =
@@ -613,15 +637,23 @@ function CreateProjectModal({
                         const event = JSON.parse(line.replace("data: ", "")) as {
                             type: string;
                             message?: string;
+                            id?: string;
                             projectPath?: string;
                             projectName?: string;
                         };
                         if (event.message) addLog(event.message);
                         if (event.type === "done") {
-                            setProjectPath(event.projectPath ?? "");
+                            const nextCreatedProject: CreatedProject = {
+                                workspaceId: event.id ?? "",
+                                projectPath: event.projectPath ?? "",
+                                projectName: event.projectName ?? projectName,
+                            };
+
+                            setCreatedProject(nextCreatedProject.workspaceId ? nextCreatedProject : null);
+
                             // Run install if scaffolding
                             if (source === "template") {
-                                await runInstall(event.projectPath ?? "");
+                                await runInstall(nextCreatedProject.projectPath);
                             } else {
                                 setStatus("done");
                             }
@@ -858,7 +890,12 @@ function CreateProjectModal({
                             {status === "done" && (
                                 <div className="flex gap-2">
                                     <button
-                                        onClick={() => { onCreated(projectPath); }}
+                                        onClick={() => {
+                                            if (createdProject) {
+                                                onCreated(createdProject);
+                                            }
+                                        }}
+                                        disabled={!createdProject}
                                         className="btn btn-primary flex-1 justify-center"
                                     >
                                         <Code2 size={14} /> Open in Editor

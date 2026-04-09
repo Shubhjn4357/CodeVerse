@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { startWorkspaceContainer, stopWorkspaceContainer, prewarmWorkspace } from "@/lib/docker/manager";
+import { startWorkspaceContainer, stopWorkspaceContainer, prewarmWorkspace, getWorkspaceStatus } from "@/lib/docker/manager";
 import { auth } from "@/auth";
 import { db } from "@/lib/db";
 
@@ -14,15 +14,15 @@ export async function GET(req: Request) {
 
     if (action === "statusAll") {
         try {
-            // Fetch all workspaces for user and return their statuses
             const res = await db.execute({
-                sql: "SELECT id, status FROM workspaces WHERE user_id = ?",
+                sql: "SELECT id FROM workspaces WHERE user_id = ?",
                 args: [session.user.id]
             });
 
             const statuses: Record<string, string> = {};
             res.rows.forEach(row => {
-                statuses[row.id as string] = row.status as string;
+                const workspaceId = row.id as string;
+                statuses[workspaceId] = getWorkspaceStatus(workspaceId) === "ready" ? "running" : "stopped";
             });
 
             return NextResponse.json({ statuses });

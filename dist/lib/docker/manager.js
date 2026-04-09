@@ -21,6 +21,7 @@ const dockerode_1 = __importDefault(require("dockerode"));
 const events_1 = require("events");
 const idx_engine_1 = require("../idx/idx-engine");
 const storage_1 = require("../hf/storage");
+const isolation_1 = require("../fs/isolation");
 /**
  * Registry for native workspace processes (IDE instances running outside Docker)
  * Map<workspaceId, { pid: number; port: number; process: WorkspaceProcess }>
@@ -36,26 +37,96 @@ exports.provisioningBus = new ProvisioningBus();
  * Map to track active provisioning promises to prevent redundant creation loops.
  */
 exports.pendingProvisioning = new Map();
+const SHORT_WORKSPACE_ID_LENGTH = 8;
+const RUNTIME_ROOT_DIR_NAME = '.codeverse-runtime';
+function getWorkspaceRootPath() {
+    return process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/node/w');
+}
+function getRuntimeRootPath() {
+    return path_1.default.join(/*turbopackIgnore: true*/ getWorkspaceRootPath(), RUNTIME_ROOT_DIR_NAME);
+}
+function getShortWorkspaceId(id) {
+    return id.slice(0, SHORT_WORKSPACE_ID_LENGTH);
+}
+function isPathWithinParent(parentPath, targetPath) {
+    const normalizedParent = path_1.default.resolve(parentPath);
+    const normalizedTarget = path_1.default.resolve(targetPath);
+    return normalizedTarget === normalizedParent || normalizedTarget.startsWith(`${normalizedParent}${path_1.default.sep}`);
+}
+function getNativeWorkspaceEntry(id) {
+    const directEntry = exports.nativeProcesses.get(id);
+    if (directEntry) {
+        return directEntry;
+    }
+    const prefixedKey = Array.from(exports.nativeProcesses.keys()).find((key) => id.startsWith(key));
+    return prefixedKey ? exports.nativeProcesses.get(prefixedKey) : undefined;
+}
+async function resolveWorkspaceRuntimePaths(config) {
+    const shortWorkspaceId = getShortWorkspaceId(config.id);
+    const runtimeRootPath = getRuntimeRootPath();
+    const projectPath = await (0, isolation_1.resolveSafeProjectPath)(config.userId, config.projectName);
+    return {
+        fullWorkspaceId: config.id,
+        shortWorkspaceId,
+        projectPath,
+        runtimeRootPath,
+        runtimeWorkspacePath: path_1.default.join(/*turbopackIgnore: true*/ runtimeRootPath, shortWorkspaceId),
+        userDataPath: path_1.default.join(/*turbopackIgnore: true*/ runtimeRootPath, `${shortWorkspaceId}-userdata`),
+        metadataPath: path_1.default.join(/*turbopackIgnore: true*/ runtimeRootPath, `${shortWorkspaceId}.id`),
+    };
+}
+function ensureRuntimeWorkspacePath(paths, log) {
+    if (!fs_1.default.existsSync(paths.projectPath)) {
+        fs_1.default.mkdirSync(paths.projectPath, { recursive: true });
+    }
+    fs_1.default.mkdirSync(paths.runtimeRootPath, { recursive: true });
+    fs_1.default.mkdirSync(paths.userDataPath, { recursive: true });
+    if (fs_1.default.existsSync(paths.runtimeWorkspacePath)) {
+        try {
+            const existingTargetPath = fs_1.default.realpathSync(paths.runtimeWorkspacePath);
+            if (path_1.default.resolve(existingTargetPath) === path_1.default.resolve(paths.projectPath)) {
+                fs_1.default.writeFileSync(paths.metadataPath, paths.fullWorkspaceId);
+                return paths.runtimeWorkspacePath;
+            }
+        }
+        catch (_a) {
+            // Fall through and repair the runtime alias.
+        }
+        if (!isPathWithinParent(paths.runtimeRootPath, paths.runtimeWorkspacePath)) {
+            throw new Error(`Unsafe runtime workspace path: ${paths.runtimeWorkspacePath}`);
+        }
+        fs_1.default.rmSync(paths.runtimeWorkspacePath, { recursive: true, force: true });
+    }
+    try {
+        fs_1.default.symlinkSync(paths.projectPath, paths.runtimeWorkspacePath, process.platform === 'win32' ? 'junction' : 'dir');
+        fs_1.default.writeFileSync(paths.metadataPath, paths.fullWorkspaceId);
+        log === null || log === void 0 ? void 0 : log(`Bound runtime alias ${paths.shortWorkspaceId} -> ${paths.projectPath}`);
+        return paths.runtimeWorkspacePath;
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        fs_1.default.writeFileSync(paths.metadataPath, paths.fullWorkspaceId);
+        log === null || log === void 0 ? void 0 : log(`[WARN] Runtime alias creation failed. Falling back to direct project path: ${errorMessage}`);
+        return paths.projectPath;
+    }
+}
 /**
  * Checks if a native workspace is currently running.
  * Supports fuzzy matching for reconnected sessions that might use a prefix key.
  */
 function isNativeWorkspaceRunning(id) {
-    if (exports.nativeProcesses.has(id))
-        return true;
     if (exports.pendingProvisioning.has(id))
-        return true;
-    // Prefix fallback for reconnected sessions
-    return Array.from(exports.nativeProcesses.keys()).some(k => id.startsWith(k));
+        return false;
+    return getNativeWorkspaceEntry(id) !== undefined;
 }
 /**
  * Returns the current runtime status of a workspace.
  */
 function getWorkspaceStatus(id) {
-    if (exports.nativeProcesses.has(id))
-        return "ready";
     if (exports.pendingProvisioning.has(id))
         return "provisioning";
+    if (getNativeWorkspaceEntry(id))
+        return "ready";
     return "offline";
 }
 /**
@@ -117,12 +188,10 @@ async function stopNativeWorkspace(id) {
  */
 function getNativeWorkspacePort(id) {
     var _a;
-    const entry = exports.nativeProcesses.get(id);
-    if (entry)
-        return entry.port;
-    // Prefix fallback
-    const key = Array.from(exports.nativeProcesses.keys()).find(k => id.startsWith(k));
-    return key ? (_a = exports.nativeProcesses.get(key)) === null || _a === void 0 ? void 0 : _a.port : undefined;
+    if (exports.pendingProvisioning.has(id)) {
+        return undefined;
+    }
+    return (_a = getNativeWorkspaceEntry(id)) === null || _a === void 0 ? void 0 : _a.port;
 }
 /**
  * Returns the global unified Android VNC port.
@@ -134,12 +203,8 @@ function getAndroidPort() {
  * PREDICTIVE HYDRATION: Pre-warms Nix profile and SDKs.
  */
 async function prewarmWorkspace(config) {
-    // CRITICAL (April 2026): Shorten paths to avoid Unix Domain Socket (UDS) path limit (104 chars)
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/node/w');
-    const workspacePath = path_1.default.join(/*turbopackIgnore: true*/ workspaceRoot, config.id.slice(0, 8));
-    if (!fs_1.default.existsSync(workspacePath)) {
-        fs_1.default.mkdirSync(workspacePath, { recursive: true });
-    }
+    const runtimePaths = await resolveWorkspaceRuntimePaths(config);
+    const workspacePath = ensureRuntimeWorkspacePath(runtimePaths);
     const idxConfig = idx_engine_1.IdxEngine.getIdxConfig(workspacePath);
     if (idxConfig) {
         // Run Nix sync in background if not already warmed
@@ -167,15 +232,9 @@ async function performProvisioning(config) {
             log(`[WARN] Persistent profile restoration failed: ${e instanceof Error ? e.message : String(e)}. Proceeding with clean environment.`);
         }
         // 1. Prepare Workspace Directory
-        const workspaceRoot = process.env.WORKSPACE_ROOT || path_1.default.join(/*turbopackIgnore: true*/ '/home/node/w');
-        const workspacePath = path_1.default.join(/*turbopackIgnore: true*/ workspaceRoot, config.id.slice(0, 8));
-        const userDataPath = path_1.default.join(/*turbopackIgnore: true*/ workspacePath, '.vscode-server');
-        if (!fs_1.default.existsSync(workspacePath)) {
-            fs_1.default.mkdirSync(workspacePath, { recursive: true });
-            // Store full ID for reliable reconnection after server restarts
-            fs_1.default.writeFileSync(path_1.default.join(workspacePath, '.codeverse-id'), config.id);
-            log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
-        }
+        const runtimePaths = await resolveWorkspaceRuntimePaths(config);
+        const workspacePath = ensureRuntimeWorkspacePath(runtimePaths, log);
+        const userDataPath = runtimePaths.userDataPath;
         // 2. Register in active pool (EARLY REGISTRATION: satisfy proxy health checks)
         const port = findAvailablePort();
         exports.nativeProcesses.set(config.id, {
@@ -279,6 +338,7 @@ async function performProvisioning(config) {
     catch (e) {
         const error = e instanceof Error ? e.message : String(e);
         log(`[FATAL] Provisioning pipeline collapsed: ${error}`);
+        exports.nativeProcesses.delete(config.id);
         const errResult = { success: false, error: "PROVISIONING_FAILED" };
         exports.provisioningBus.emit(`error:${config.id}`, errResult);
         return errResult;
@@ -288,11 +348,16 @@ async function performProvisioning(config) {
  * Workspace provisioner with ATOMIC single-instance locking.
  */
 async function startWorkspaceContainer(config) {
-    if (exports.nativeProcesses.has(config.id)) {
+    const pendingWorkspace = exports.pendingProvisioning.get(config.id);
+    if (pendingWorkspace) {
+        return await pendingWorkspace;
+    }
+    const existingPort = getNativeWorkspacePort(config.id);
+    if (existingPort !== undefined) {
         return {
             success: true,
             containerId: `native-${config.id}`,
-            port: exports.nativeProcesses.get(config.id).port
+            port: existingPort
         };
     }
     let pending = exports.pendingProvisioning.get(config.id);
@@ -309,7 +374,9 @@ async function startWorkspaceContainer(config) {
  * This allows the IDE to survive server restarts or cold boots by probing active ports.
  */
 async function reconnectRunningWorkspaces() {
-    const workspaceRoot = process.env.WORKSPACE_ROOT || '/home/node/w';
+    var _a, _b;
+    const workspaceRoot = getWorkspaceRootPath();
+    const runtimeRootPath = getRuntimeRootPath();
     console.log(`[BOOT] Probing filesystem segment: ${workspaceRoot} for existing sessions...`);
     try {
         // Find all code-server processes
@@ -320,16 +387,23 @@ async function reconnectRunningWorkspaces() {
         for (const line of lines) {
             // Looking for: ... --bind-addr 127.0.0.1:8548 ... w/44c7597c
             const bindMatch = line.match(/--bind-addr 127\.0\.0\.1:(\d+)/);
-            // Flexible path match: look for the ID prefix after 'w/' or 'workspaces/' or just the root
-            const pathMatch = line.match(/[ /](?:w|workspaces)\/([a-zA-Z0-9]{8})/);
-            if (bindMatch && pathMatch) {
-                const port = parseInt(bindMatch[1]);
-                const shortId = pathMatch[1];
-                const fullPath = path_1.default.join(workspaceRoot, shortId);
-                const idFile = path_1.default.join(fullPath, '.codeverse-id');
+            const userDataMatch = line.match(/\.codeverse-runtime[\/\\]([a-zA-Z0-9]{8})-userdata/);
+            const runtimePathMatch = line.match(/\.codeverse-runtime[\/\\]([a-zA-Z0-9]{8})(?:\s|$)/);
+            const legacyPathMatch = line.match(/[ /](?:w|workspaces)[\/\\]([a-zA-Z0-9]{8})/);
+            if (bindMatch) {
+                const shortId = (_b = (_a = userDataMatch === null || userDataMatch === void 0 ? void 0 : userDataMatch[1]) !== null && _a !== void 0 ? _a : runtimePathMatch === null || runtimePathMatch === void 0 ? void 0 : runtimePathMatch[1]) !== null && _b !== void 0 ? _b : legacyPathMatch === null || legacyPathMatch === void 0 ? void 0 : legacyPathMatch[1];
+                if (!shortId) {
+                    continue;
+                }
+                const port = parseInt(bindMatch[1], 10);
+                const metadataPath = path_1.default.join(runtimeRootPath, `${shortId}.id`);
+                const legacyIdFile = path_1.default.join(workspaceRoot, shortId, '.codeverse-id');
                 let foundFullId = "";
-                if (fs_1.default.existsSync(idFile)) {
-                    foundFullId = fs_1.default.readFileSync(idFile, 'utf-8').trim();
+                if (fs_1.default.existsSync(metadataPath)) {
+                    foundFullId = fs_1.default.readFileSync(metadataPath, 'utf-8').trim();
+                }
+                else if (fs_1.default.existsSync(legacyIdFile)) {
+                    foundFullId = fs_1.default.readFileSync(legacyIdFile, 'utf-8').trim();
                 }
                 else {
                     // Fallback: If no ID file, we use the shortId as the temporary key.
@@ -365,7 +439,7 @@ async function reconnectRunningWorkspaces() {
             }
         }
     }
-    catch (e) {
+    catch (_c) {
         // No processes found or ps failed
     }
 }
@@ -413,7 +487,7 @@ startEngineWatchdog();
  */
 async function stopWorkspaceContainer(id) {
     const success = await stopNativeWorkspace(id);
-    return { success: success || true };
+    return { success };
 }
 /**
  * Modern Docker Manager class.

@@ -5,6 +5,7 @@ import Docker from 'dockerode';
 import { EventEmitter } from 'events';
 import { IdxEngine } from '../idx/idx-engine';
 import { HFStorage } from '../hf/storage';
+import { resolveSafeProjectPath } from '../fs/isolation';
 
 /**
  * Lighter process interface for reconnected sessions that don't have a full Node.js ChildProcess object.
@@ -33,23 +34,118 @@ export const provisioningBus = new ProvisioningBus();
  */
 export const pendingProvisioning = new Map<string, Promise<WorkspaceOperationResult>>();
 
+interface WorkspaceRuntimePaths {
+    fullWorkspaceId: string;
+    shortWorkspaceId: string;
+    projectPath: string;
+    runtimeRootPath: string;
+    runtimeWorkspacePath: string;
+    userDataPath: string;
+    metadataPath: string;
+}
+
+const SHORT_WORKSPACE_ID_LENGTH = 8;
+const RUNTIME_ROOT_DIR_NAME = '.codeverse-runtime';
+
+function getWorkspaceRootPath(): string {
+    return process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
+}
+
+function getRuntimeRootPath(): string {
+    return path.join(/*turbopackIgnore: true*/ getWorkspaceRootPath(), RUNTIME_ROOT_DIR_NAME);
+}
+
+function getShortWorkspaceId(id: string): string {
+    return id.slice(0, SHORT_WORKSPACE_ID_LENGTH);
+}
+
+function isPathWithinParent(parentPath: string, targetPath: string): boolean {
+    const normalizedParent = path.resolve(parentPath);
+    const normalizedTarget = path.resolve(targetPath);
+
+    return normalizedTarget === normalizedParent || normalizedTarget.startsWith(`${normalizedParent}${path.sep}`);
+}
+
+function getNativeWorkspaceEntry(id: string): { pid: number; port: number; process: WorkspaceProcess } | undefined {
+    const directEntry = nativeProcesses.get(id);
+    if (directEntry) {
+        return directEntry;
+    }
+
+    const prefixedKey = Array.from(nativeProcesses.keys()).find((key) => id.startsWith(key));
+    return prefixedKey ? nativeProcesses.get(prefixedKey) : undefined;
+}
+
+async function resolveWorkspaceRuntimePaths(config: Pick<WorkspaceConfig, 'id' | 'userId' | 'projectName'>): Promise<WorkspaceRuntimePaths> {
+    const shortWorkspaceId = getShortWorkspaceId(config.id);
+    const runtimeRootPath = getRuntimeRootPath();
+    const projectPath = await resolveSafeProjectPath(config.userId, config.projectName);
+
+    return {
+        fullWorkspaceId: config.id,
+        shortWorkspaceId,
+        projectPath,
+        runtimeRootPath,
+        runtimeWorkspacePath: path.join(/*turbopackIgnore: true*/ runtimeRootPath, shortWorkspaceId),
+        userDataPath: path.join(/*turbopackIgnore: true*/ runtimeRootPath, `${shortWorkspaceId}-userdata`),
+        metadataPath: path.join(/*turbopackIgnore: true*/ runtimeRootPath, `${shortWorkspaceId}.id`),
+    };
+}
+
+function ensureRuntimeWorkspacePath(paths: WorkspaceRuntimePaths, log?: (msg: string) => void): string {
+    if (!fs.existsSync(paths.projectPath)) {
+        fs.mkdirSync(paths.projectPath, { recursive: true });
+    }
+
+    fs.mkdirSync(paths.runtimeRootPath, { recursive: true });
+    fs.mkdirSync(paths.userDataPath, { recursive: true });
+
+    if (fs.existsSync(paths.runtimeWorkspacePath)) {
+        try {
+            const existingTargetPath = fs.realpathSync(paths.runtimeWorkspacePath);
+            if (path.resolve(existingTargetPath) === path.resolve(paths.projectPath)) {
+                fs.writeFileSync(paths.metadataPath, paths.fullWorkspaceId);
+                return paths.runtimeWorkspacePath;
+            }
+        } catch {
+            // Fall through and repair the runtime alias.
+        }
+
+        if (!isPathWithinParent(paths.runtimeRootPath, paths.runtimeWorkspacePath)) {
+            throw new Error(`Unsafe runtime workspace path: ${paths.runtimeWorkspacePath}`);
+        }
+
+        fs.rmSync(paths.runtimeWorkspacePath, { recursive: true, force: true });
+    }
+
+    try {
+        fs.symlinkSync(paths.projectPath, paths.runtimeWorkspacePath, process.platform === 'win32' ? 'junction' : 'dir');
+        fs.writeFileSync(paths.metadataPath, paths.fullWorkspaceId);
+        log?.(`Bound runtime alias ${paths.shortWorkspaceId} -> ${paths.projectPath}`);
+        return paths.runtimeWorkspacePath;
+    } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        fs.writeFileSync(paths.metadataPath, paths.fullWorkspaceId);
+        log?.(`[WARN] Runtime alias creation failed. Falling back to direct project path: ${errorMessage}`);
+        return paths.projectPath;
+    }
+}
+
 /**
  * Checks if a native workspace is currently running.
  * Supports fuzzy matching for reconnected sessions that might use a prefix key.
  */
 export function isNativeWorkspaceRunning(id: string): boolean {
-    if (nativeProcesses.has(id)) return true;
-    if (pendingProvisioning.has(id)) return true;
-    // Prefix fallback for reconnected sessions
-    return Array.from(nativeProcesses.keys()).some(k => id.startsWith(k));
+    if (pendingProvisioning.has(id)) return false;
+    return getNativeWorkspaceEntry(id) !== undefined;
 }
 
 /**
  * Returns the current runtime status of a workspace.
  */
 export function getWorkspaceStatus(id: string): "ready" | "provisioning" | "offline" {
-    if (nativeProcesses.has(id)) return "ready";
     if (pendingProvisioning.has(id)) return "provisioning";
+    if (getNativeWorkspaceEntry(id)) return "ready";
     return "offline";
 }
 
@@ -115,12 +211,11 @@ export async function stopNativeWorkspace(id: string): Promise<boolean> {
  * Supports fuzzy matching for reconnected sessions.
  */
 export function getNativeWorkspacePort(id: string): number | undefined {
-    const entry = nativeProcesses.get(id);
-    if (entry) return entry.port;
-    
-    // Prefix fallback
-    const key = Array.from(nativeProcesses.keys()).find(k => id.startsWith(k));
-    return key ? nativeProcesses.get(key)?.port : undefined;
+    if (pendingProvisioning.has(id)) {
+        return undefined;
+    }
+
+    return getNativeWorkspaceEntry(id)?.port;
 }
 
 /**
@@ -157,13 +252,8 @@ export interface WorkspaceOperationResult {
  * PREDICTIVE HYDRATION: Pre-warms Nix profile and SDKs.
  */
 export async function prewarmWorkspace(config: WorkspaceConfig): Promise<void> {
-    // CRITICAL (April 2026): Shorten paths to avoid Unix Domain Socket (UDS) path limit (104 chars)
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
-    const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id.slice(0, 8));
-    
-    if (!fs.existsSync(workspacePath)) {
-        fs.mkdirSync(workspacePath, { recursive: true });
-    }
+    const runtimePaths = await resolveWorkspaceRuntimePaths(config);
+    const workspacePath = ensureRuntimeWorkspacePath(runtimePaths);
 
     const idxConfig = IdxEngine.getIdxConfig(workspacePath);
     if (idxConfig) {
@@ -194,16 +284,9 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
         }
     
     // 1. Prepare Workspace Directory
-    const workspaceRoot = process.env.WORKSPACE_ROOT || path.join(/*turbopackIgnore: true*/ '/home/node/w');
-    const workspacePath = path.join(/*turbopackIgnore: true*/ workspaceRoot, config.id.slice(0, 8));
-    const userDataPath = path.join(/*turbopackIgnore: true*/ workspacePath, '.vscode-server');
-    
-    if (!fs.existsSync(workspacePath)) {
-        fs.mkdirSync(workspacePath, { recursive: true });
-        // Store full ID for reliable reconnection after server restarts
-        fs.writeFileSync(path.join(workspacePath, '.codeverse-id'), config.id); 
-        log(`Allocated isolated filesystem segment: ${config.id.slice(0, 8)}`);
-    }
+    const runtimePaths = await resolveWorkspaceRuntimePaths(config);
+    const workspacePath = ensureRuntimeWorkspacePath(runtimePaths, log);
+    const userDataPath = runtimePaths.userDataPath;
 
     // 2. Register in active pool (EARLY REGISTRATION: satisfy proxy health checks)
     const port = findAvailablePort();
@@ -316,6 +399,7 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
     } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
         log(`[FATAL] Provisioning pipeline collapsed: ${error}`);
+        nativeProcesses.delete(config.id);
         const errResult = { success: false, error: "PROVISIONING_FAILED" };
         provisioningBus.emit(`error:${config.id}`, errResult);
         return errResult;
@@ -326,11 +410,17 @@ async function performProvisioning(config: WorkspaceConfig): Promise<WorkspaceOp
  * Workspace provisioner with ATOMIC single-instance locking.
  */
 export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<WorkspaceOperationResult> {
-    if (nativeProcesses.has(config.id)) {
+    const pendingWorkspace = pendingProvisioning.get(config.id);
+    if (pendingWorkspace) {
+        return await pendingWorkspace;
+    }
+
+    const existingPort = getNativeWorkspacePort(config.id);
+    if (existingPort !== undefined) {
         return {
             success: true,
             containerId: `native-${config.id}`,
-            port: nativeProcesses.get(config.id)!.port
+            port: existingPort
         };
     }
 
@@ -350,7 +440,8 @@ export async function startWorkspaceContainer(config: WorkspaceConfig): Promise<
  * This allows the IDE to survive server restarts or cold boots by probing active ports.
  */
 export async function reconnectRunningWorkspaces() {
-    const workspaceRoot = process.env.WORKSPACE_ROOT || '/home/node/w';
+    const workspaceRoot = getWorkspaceRootPath();
+    const runtimeRootPath = getRuntimeRootPath();
     
     console.log(`[BOOT] Probing filesystem segment: ${workspaceRoot} for existing sessions...`);
     try {
@@ -363,18 +454,25 @@ export async function reconnectRunningWorkspaces() {
         for (const line of lines) {
             // Looking for: ... --bind-addr 127.0.0.1:8548 ... w/44c7597c
             const bindMatch = line.match(/--bind-addr 127\.0\.0\.1:(\d+)/);
-            // Flexible path match: look for the ID prefix after 'w/' or 'workspaces/' or just the root
-            const pathMatch = line.match(/[ /](?:w|workspaces)\/([a-zA-Z0-9]{8})/);
+            const userDataMatch = line.match(/\.codeverse-runtime[\/\\]([a-zA-Z0-9]{8})-userdata/);
+            const runtimePathMatch = line.match(/\.codeverse-runtime[\/\\]([a-zA-Z0-9]{8})(?:\s|$)/);
+            const legacyPathMatch = line.match(/[ /](?:w|workspaces)[\/\\]([a-zA-Z0-9]{8})/);
             
-            if (bindMatch && pathMatch) {
-                const port = parseInt(bindMatch[1]);
-                const shortId = pathMatch[1];
-                const fullPath = path.join(workspaceRoot, shortId);
-                const idFile = path.join(fullPath, '.codeverse-id');
+            if (bindMatch) {
+                const shortId = userDataMatch?.[1] ?? runtimePathMatch?.[1] ?? legacyPathMatch?.[1];
+                if (!shortId) {
+                    continue;
+                }
+
+                const port = parseInt(bindMatch[1], 10);
+                const metadataPath = path.join(runtimeRootPath, `${shortId}.id`);
+                const legacyIdFile = path.join(workspaceRoot, shortId, '.codeverse-id');
                 
                 let foundFullId = "";
-                if (fs.existsSync(idFile)) {
-                    foundFullId = fs.readFileSync(idFile, 'utf-8').trim();
+                if (fs.existsSync(metadataPath)) {
+                    foundFullId = fs.readFileSync(metadataPath, 'utf-8').trim();
+                } else if (fs.existsSync(legacyIdFile)) {
+                    foundFullId = fs.readFileSync(legacyIdFile, 'utf-8').trim();
                 } else {
                     // Fallback: If no ID file, we use the shortId as the temporary key.
                     foundFullId = shortId;
@@ -406,7 +504,7 @@ export async function reconnectRunningWorkspaces() {
                 }
             }
         }
-    } catch (e) {
+    } catch {
         // No processes found or ps failed
     }
 }
@@ -454,7 +552,7 @@ startEngineWatchdog();
  */
 export async function stopWorkspaceContainer(id: string): Promise<{ success: boolean }> {
     const success = await stopNativeWorkspace(id);
-    return { success: success || true }; 
+    return { success };
 }
 
 /**

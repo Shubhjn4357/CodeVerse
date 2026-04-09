@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { provisioningBus, isNativeWorkspaceRunning, nativeProcesses, pendingProvisioning, WorkspaceOperationResult } from '@/lib/docker/manager';
+import { provisioningBus, isNativeWorkspaceRunning, getNativeWorkspacePort, pendingProvisioning, WorkspaceOperationResult } from '@/lib/docker/manager';
 import { auth } from '@/auth';
 import { db } from '@/lib/db';
 
@@ -12,15 +12,13 @@ export async function GET(req: NextRequest) {
 
     const searchParams = req.nextUrl.searchParams;
     const id = searchParams.get('id');
-    const withAndroid = searchParams.get('withAndroid') === 'true';
 
     if (!id) {
         return new Response('Missing workspace id', { status: 400 });
     }
 
-    // Verify ownership and get project name
     const verifyObj = await db.execute({
-        sql: "SELECT project_name FROM workspaces WHERE id = ? AND user_id = ?",
+        sql: "SELECT 1 FROM workspaces WHERE id = ? AND user_id = ? LIMIT 1",
         args: [id, userId]
     });
 
@@ -28,9 +26,8 @@ export async function GET(req: NextRequest) {
         return new Response('Workspace not found or unauthorized', { status: 404 });
     }
 
-    const projectName = verifyObj.rows[0].project_name as string;
-
     const encoder = new TextEncoder();
+    let cleanup = () => {};
 
     const stream = new ReadableStream({
         async start(controller) {
@@ -42,6 +39,19 @@ export async function GET(req: NextRequest) {
                 } catch {
                     // Controller might be closed if client disconnected
                 }
+            };
+
+            let timeoutId: NodeJS.Timeout | null = null;
+
+            const dispose = () => {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                    timeoutId = null;
+                }
+
+                provisioningBus.off(`log:${id}`, onLog);
+                provisioningBus.off(`ready:${id}`, onReady);
+                provisioningBus.off(`error:${id}`, onFailure);
             };
 
             // 1. ATTACHMENT: Listen to existing provisioning session if one is already active
@@ -56,35 +66,45 @@ export async function GET(req: NextRequest) {
                     androidPort: res.androidPort,
                     appetizeUrl: res.appetizeUrl,
                 });
-                provisioningBus.off(`log:${id}`, onLog);
-                provisioningBus.off(`ready:${id}`, onReady);
+                dispose();
                 controller.close();
             };
             provisioningBus.on(`ready:${id}`, onReady);
+
+            const onFailure = (res: WorkspaceOperationResult) => {
+                sendEvent('error', { message: res.error || 'Provisioning failed.' });
+                dispose();
+                controller.close();
+            };
+            provisioningBus.on(`error:${id}`, onFailure);
+            cleanup = dispose;
 
             // 3. IMMEDIATE SYNC: If workspace is ALREADY running, send ready and finish
             if (isNativeWorkspaceRunning(id)) {
                 sendEvent('ready', {
                     success: true,
-                    port: nativeProcesses.get(id)!.port,
+                    port: getNativeWorkspacePort(id),
                 });
-                provisioningBus.off(`log:${id}`, onLog);
-                provisioningBus.off(`ready:${id}`, onReady);
+                dispose();
                 controller.close();
                 return;
             }
 
             // 4. PERSISTENCE: If not active and not pending, wait for a potential POST start
             if (!pendingProvisioning.has(id)) {
-                setTimeout(() => {
+                timeoutId = setTimeout(() => {
                     try {
                         if (!pendingProvisioning.has(id) && !isNativeWorkspaceRunning(id)) {
                            sendEvent('error', { message: "No active provisioning session. Start workspace first." });
+                           dispose();
                            controller.close();
                         }
                     } catch {}
                 }, 10000); // 10s wait for a POST start
             }
+        },
+        cancel() {
+            cleanup();
         }
     });
 

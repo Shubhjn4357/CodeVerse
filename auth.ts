@@ -1,10 +1,10 @@
-import NextAuth, { type Session, type DefaultSession } from "next-auth";
+import NextAuth, { type DefaultSession } from "next-auth";
+import "next-auth/jwt";
 import GitHubProvider from "next-auth/providers/github";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { client as db } from "@/lib/db";
 import { randomUUID } from "crypto";
 import type { Adapter, AdapterUser, AdapterAccount, AdapterSession, VerificationToken } from "@auth/core/adapters";
-import { JWT } from "next-auth/jwt";
 import { AUTH_CONFIG, ROUTES } from "@/constants";
 
 /**

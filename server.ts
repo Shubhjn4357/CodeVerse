@@ -6,7 +6,7 @@ import "dotenv/config";
 process.on('uncaughtException', (err: Error) => { console.error('[FATAL:EXCEPTION]', err); });
 process.on('unhandledRejection', (reason: unknown) => { console.error('[FATAL:REJECTION]', reason); });
 
-import { createServer, IncomingMessage, ServerResponse } from "http";
+import { createServer, IncomingMessage, ServerResponse, ClientRequest } from "http";
 import next from "next";
 import { Server } from "socket.io";
 import { WebSocketServer, WebSocket } from "ws";
@@ -17,7 +17,7 @@ import * as encoding from "lib0/encoding";
 import * as decoding from "lib0/decoding";
 import * as map from "lib0/map";
 import * as pty from "node-pty";
-import os from "os";
+import * as os from "os";
 import { Duplex } from "stream";
 import { startAutoSleepCron } from "./lib/jobs/auto-sleep";
 import { getWorkspacePort, isWorkspaceRunning, prewarmWorkspace, reconnectRunningWorkspaces } from "./lib/docker/manager";
@@ -28,9 +28,7 @@ import { ENV_CONFIG, validateEnvironment } from "./lib/env-config";
 import httpProxy from "http-proxy";
 import { APP_CONFIG, INFRA_CONFIG, UI_STRINGS } from "./constants";
 
-/**
- * PRODUCTION HARDENING (April 2026): Force writable temp paths for HF Spaces.
- */
+
 process.env.TMPDIR = ENV_CONFIG.TMPDIR;
 process.env.HF_HOME = ENV_CONFIG.HF_HOME;
 if (!process.env.HOME) process.env.HOME = '/home/node';
@@ -130,11 +128,15 @@ proxy.on("error", (err: Error, req: IncomingMessage, res: ServerResponse | Duple
     console.error(`[Proxy Connection Error] ${err.message} for workspace/${id}`);
     
     if (res instanceof ServerResponse) {
-        renderProxyError(res, err.message, id);
+        if (!res.headersSent) {
+            renderProxyError(res, err.message, id);
+        } else {
+            res.end();
+        }
     }
 });
 
-proxy.on("proxyReq", (proxyReq, req: IncomingMessage) => {
+proxy.on("proxyReq", (proxyReq: ClientRequest, req: IncomingMessage) => {
     const id = req.headers['x-codeverse-id'] as string;
     const type = req.headers['x-codeverse-type'] as string;
     if (id && type) {
@@ -143,7 +145,7 @@ proxy.on("proxyReq", (proxyReq, req: IncomingMessage) => {
     }
 });
 
-proxy.on("proxyReqWs", (proxyReq, req: IncomingMessage) => {
+proxy.on("proxyReqWs", (proxyReq: ClientRequest, req: IncomingMessage) => {
     const id = req.headers['x-codeverse-id'] as string;
     const type = req.headers['x-codeverse-type'] as string;
     if (id && type) {
@@ -152,7 +154,7 @@ proxy.on("proxyReqWs", (proxyReq, req: IncomingMessage) => {
     }
 });
 
-proxy.on("proxyRes", (proxyRes, req: IncomingMessage) => {
+proxy.on("proxyRes", (proxyRes: IncomingMessage, req: IncomingMessage) => {
     const id = req.headers['x-codeverse-id'] as string;
     const type = req.headers['x-codeverse-type'] as string;
     if (id && type && proxyRes.headers.location) {

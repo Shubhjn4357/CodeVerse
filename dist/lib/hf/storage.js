@@ -40,7 +40,8 @@ class HFStorage {
                 PATH: `/home/node/.local/bin:/home/node/.nix-profile/bin:/usr/local/bin:/usr/bin:${process.env.PATH}`,
             };
             const child = (0, child_process_1.spawn)('/bin/bash', ['-c', command], {
-                env: spawnEnv
+                env: spawnEnv,
+                timeout: 120000 // 120 second strict execution timeout
             });
             child.stdout.on('data', (data) => onLog === null || onLog === void 0 ? void 0 : onLog(data.toString().trim()));
             child.stderr.on('data', (data) => {
@@ -50,11 +51,11 @@ class HFStorage {
                 }
                 onLog === null || onLog === void 0 ? void 0 : onLog(`[WARN] ${msg}`);
             });
-            child.on('close', (code) => {
+            child.on('close', (code, signal) => {
                 if (code === 0)
                     resolve();
                 else
-                    reject(new Error(`Command failed with code ${code}: ${command}`));
+                    reject(new Error(`Command failed with code ${code} (Signal: ${signal}): ${command}`));
             });
             child.on('error', (error) => reject(error));
         });

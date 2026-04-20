@@ -213,7 +213,8 @@ export class IdxEngine {
 
       const child = spawn(shellCommand, shellArgs, {
         cwd: workspacePath,
-        env: spawnEnv
+        env: spawnEnv,
+        ...(background ? {} : { timeout: 300000 }) // 5 min timeout for synchronous hooks
       });
 
       child.stdout.on('data', (data) => log(data.toString().trim()));

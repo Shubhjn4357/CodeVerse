@@ -73,8 +73,17 @@ RUN mkdir -p /home/node/.idx && \
     echo '{"packages":["pkgs.nodejs","pkgs.go","pkgs.python3","pkgs.docker","pkgs.python3Packages.huggingface-hub"],"timestamp":"baked"}' > /home/node/.idx/baked-packages.json && \
     chown -R node:node /home/node/.idx
 
-ENV PORT=7860
-ENV NODE_ENV=production
+ENV PORT=7860 \
+    NODE_ENV=production \
+    AUTH_SECRET="" \
+    TURSO_URL="" \
+    TURSO_AUTH_TOKEN="" \
+    HF_TOKEN="" \
+    HF_DATASET_ID="" \
+    OPENAI_API_KEY="" \
+    ANTHROPIC_API_KEY="" \
+    GOOGLE_GENERATIVE_AI_API_KEY="" \
+    MISTRAL_API_KEY=""
 
 # Final Permissions Sync for persistence
 USER root

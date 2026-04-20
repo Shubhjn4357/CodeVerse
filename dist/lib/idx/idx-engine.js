@@ -191,7 +191,8 @@ class IdxEngine {
             const shellArgs = process.platform === 'win32' ? ['-NoProfile', '-Command', script] : ['-c', script];
             const child = (0, child_process_1.spawn)(shellCommand, shellArgs, {
                 cwd: workspacePath,
-                env: spawnEnv
+                env: spawnEnv,
+                ...(background ? {} : { timeout: 300000 }) // 5 min timeout for synchronous hooks
             });
             child.stdout.on('data', (data) => log(data.toString().trim()));
             child.stderr.on('data', (data) => log(`[WARN] ${data.toString().trim()}`));

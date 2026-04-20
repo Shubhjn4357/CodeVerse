@@ -53,7 +53,7 @@ const encoding = __importStar(require("lib0/encoding"));
 const decoding = __importStar(require("lib0/decoding"));
 const map = __importStar(require("lib0/map"));
 const pty = __importStar(require("node-pty"));
-const os_1 = __importDefault(require("os"));
+const os = __importStar(require("os"));
 const auto_sleep_1 = require("./lib/jobs/auto-sleep");
 const manager_1 = require("./lib/docker/manager");
 const schema_1 = require("./lib/db/schema");
@@ -62,9 +62,6 @@ const storage_1 = require("./lib/hf/storage");
 const env_config_1 = require("./lib/env-config");
 const http_proxy_1 = __importDefault(require("http-proxy"));
 const constants_1 = require("./constants");
-/**
- * PRODUCTION HARDENING (April 2026): Force writable temp paths for HF Spaces.
- */
 process.env.TMPDIR = env_config_1.ENV_CONFIG.TMPDIR;
 process.env.HF_HOME = env_config_1.ENV_CONFIG.HF_HOME;
 if (!process.env.HOME)
@@ -149,7 +146,12 @@ proxy.on("error", (err, req, res) => {
     const id = headerId || (workspaceHostMatch ? workspaceHostMatch[1] : (pathname.split("/")[2] || "unknown"));
     console.error(`[Proxy Connection Error] ${err.message} for workspace/${id}`);
     if (res instanceof http_1.ServerResponse) {
-        renderProxyError(res, err.message, id);
+        if (!res.headersSent) {
+            renderProxyError(res, err.message, id);
+        }
+        else {
+            res.end();
+        }
     }
 });
 proxy.on("proxyReq", (proxyReq, req) => {
@@ -352,7 +354,7 @@ shoket.on("connection", (conn, request) => {
 io.on("connection", (socket) => {
     let shell = null;
     socket.on("terminal:start", ({ cols, rows }) => {
-        shell = pty.spawn(process.env.SHELL || (os_1.default.platform() === "win32" ? "powershell.exe" : "bash"), [], {
+        shell = pty.spawn(process.env.SHELL || (os.platform() === "win32" ? "powershell.exe" : "bash"), [], {
             cols: cols || 80,
             rows: rows || 24,
             cwd: env_config_1.ENV_CONFIG.WORKSPACE_ROOT,
